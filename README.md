@@ -14,7 +14,7 @@
 </picture></td>
 </tr>
 </table>
-a
+
 <p><b>Product-minded developer</b></p>
 
 <p><a href="https://github.com/kenansab">GitHub</a></p>
