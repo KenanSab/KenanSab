@@ -23,10 +23,8 @@
 
 <div align="center">
 
-<h3><code>kenansab@github ~ $ ./contributions.sh</code></h3>
 
 
 
 </div>
 
-<p align="center"><sub>Kenan · Profile generated with <a href="https://www.gitskins.com/readme-generator">GitSkins</a></sub></p>
