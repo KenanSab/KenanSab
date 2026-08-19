@@ -12,6 +12,11 @@
   <source media="(prefers-color-scheme: light)" srcset="https://www.gitskins.com/api/section/wordmark?username=kenansab&theme=aurora&style=terminal&label=Kenan&mode=light" />
   <img src="https://www.gitskins.com/api/section/wordmark?username=kenansab&theme=aurora&style=terminal&label=Kenan&mode=dark" width="100%" alt="kenansab wordmark" />
 </picture></td>
+  </picture></td>
+<td width="58%" valign="top"><picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://www.gitskins.com/api/section/wordmark?username=kenansab&theme=aurora&style=terminal&label=Kenan&mode=light" />
+  <img src="https://www.gitskins.com/api/section/wordmark?username=kenansab&theme=aurora&style=terminal&label=Kenan&mode=dark" width="100%" alt="kenansab wordmark" />
+</picture></td>
 </tr>
 </table>
 
