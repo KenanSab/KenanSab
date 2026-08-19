@@ -25,10 +25,7 @@
 
 <h3><code>kenansab@github ~ $ ./contributions.sh</code></h3>
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="https://www.gitskins.com/api/section/heatmap?username=kenansab&theme=aurora&style=terminal&mode=light" />
-  <img src="https://www.gitskins.com/api/section/heatmap?username=kenansab&theme=aurora&style=terminal&mode=dark" width="100%" alt="kenansab heatmap" />
-</picture>
+
 
 </div>
 
