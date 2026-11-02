@@ -357,4 +357,23 @@ class GameTest {
             if (idx != null) { System.out.printf("  %s money %.0f income %+.2f units %.0f%n", t, gs.ns[idx].money, gs.ns[idx].lastIncome, gs.armies.values().stream().filter(a -> a.owner == idx).mapToDouble(Army::totalUnits).sum()); }
         }
     }
+
+    @Test
+    void submarinesLaunchWithoutSilosAndArmsDealsReinforceProxies() {
+        GameState gs = game("FRA");
+        for (int p = 0; p < gs.P; p++) if (gs.owner[p] == gs.player) gs.silo[p] = 0;
+        assertTrue(gs.ns[gs.player].subs > 0, "France has missile submarines");
+        assertTrue(gs.launchNuke(gs.player, world.nations.get(world.nationByTag.get("RUS")).capital).ok, "sub launch works with no silo");
+        gs.ns[gs.player].subs = 0;
+        assertFalse(gs.launchNuke(gs.player, world.nations.get(world.nationByTag.get("RUS")).capital).ok, "no silo and no sub");
+        GameState g2 = game("USA");
+        int proxy = world.nationByTag.get("UKR");
+        int before = (int) g2.armies.values().stream().filter(x -> x.owner == proxy).count();
+        double money = g2.ns[g2.player].money;
+        assertTrue(g2.armsDeal(g2.player, proxy).ok);
+        assertEquals(before + 1, g2.armies.values().stream().filter(x -> x.owner == proxy).count());
+        assertEquals(money - 40, g2.ns[g2.player].money, 1e-6);
+        g2.war[g2.player][proxy] = g2.war[proxy][g2.player] = true;
+        assertFalse(g2.armsDeal(g2.player, proxy).ok, "no arms for enemies");
+    }
 }

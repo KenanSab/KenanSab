@@ -302,6 +302,7 @@ final class SidePanels {
             btn.add(action("Toggle sanctions", "wall", n -> gs.toggleSanction(gs.player, n)));
             btn.add(action("Buy oil", "oil", n -> gs.oilDeal(n, gs.player)));
             btn.add(action("Send 30 aid", "money", n -> gs.sendAid(gs.player, n, 30)));
+            btn.add(action("Send arms (40)", "armor", n -> gs.armsDeal(gs.player, n)));
             btn.add(action("Station agent (25)", "spy", n -> gs.assignAgent(gs.player, n)));
             JButton nuke = Ui.button("LAUNCH NUKE", "nuke", () -> {
                 if (map.selProv < 0) { message(this, new GameState.Result(false, "Select a target province on the map.")); return; }

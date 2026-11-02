@@ -40,7 +40,7 @@ intelligence shows. A tutorial walks through the first minutes (Help > Restart t
 ## Develop
 
 ```bash
-./gradlew :core:test                                  # simulation tests (16)
+./gradlew :core:test                                  # simulation tests (17)
 xvfb-run -a ./gradlew :desktop:test                   # audio + real-window UI tests (needs a display or xvfb)
 ./gradlew :desktop:installDist                        # runnable distribution in desktop/build/install/warfare
 ./gradlew :desktop:packageApp                         # native app image with bundled runtime (run on the target OS)

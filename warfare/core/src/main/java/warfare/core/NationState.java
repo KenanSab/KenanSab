@@ -29,7 +29,7 @@ public final class NationState implements Serializable {
     public final int index;
     public boolean alive = true;
     public double money = 100, manpower = 50, oil = 100, stability = 65, warWeariness = 0;
-    public int nukes, transports, lastWarDay = -1000;
+    public int nukes, subs, transports, lastWarDay = -1000;
     public final int[] tech = new int[Track.values().length];
     public Track researching = null;
     public double researchLeft;

@@ -67,6 +67,7 @@ public final class GameState implements Serializable {
             ns[n].manpower = manpowerMax(n) * 0.6;
             ns[n].oil = 60 + ni.oilProduction * 40;
             ns[n].nukes = ni.nukes;
+            ns[n].subs = ni.nukes >= 8 ? 2 : ni.nukes >= 5 ? 1 : 0;      // ballistic-missile submarines can launch without a silo
             ns[n].transports = (int) Math.max(0, Math.min(12, Math.sqrt(ni.gdp) / 120));
             ns[n].stability = 55 + (rich > 15000 ? 12 : 0) + (Math.abs(ni.tag.hashCode()) % 20);
             if (rich > 20000) ns[n].tech[0] = 1;
@@ -521,12 +522,28 @@ public final class GameState implements Serializable {
         return ok("Oil trade agreed.");
     }
 
+    /** Arms for a proxy: a small force appears at the recipient's capital. Only for nations that are not your enemy. */
+    public Result armsDeal(int a, int b) {
+        if (a == b || !ns[b].alive) return no("Invalid target.");
+        if (war[a][b]) return no("You are at war with them.");
+        if (ns[a].money < 40) return no("Need 40 money.");
+        int cap = world.nations.get(b).capital;
+        if (owner[cap] != b || controller[cap] != b) return no(nationName(b) + " has lost its capital region.");
+        ns[a].money -= 40;
+        Army x = new Army(nextArmyId++, b, cap, "Supplied by " + nationName(a));
+        x.units[UnitType.INFANTRY.ordinal()] = 2;
+        x.units[UnitType.ANTI_TANK.ordinal()] = 1;
+        x.morale = 75;
+        armies.put(x.id, x);
+        return ok("Arms delivered to " + nationName(b) + ".");
+    }
+
     public Result launchNuke(int n, int target) {
         NationState s = ns[n];
         if (s.nukes <= 0) return no("No nuclear weapons.");
-        boolean site = false;
-        for (int p = 0; p < P; p++) if (owner[p] == n && silo[p] > 0) { site = true; break; }
-        if (!site) return no("No operational silo.");
+        boolean site = s.subs > 0;
+        for (int p = 0; p < P && !site; p++) if (owner[p] == n && silo[p] > 0) site = true;
+        if (!site) return no("No operational silo or missile submarine.");
         if (isSea(target)) return no("Target must be land.");
         s.nukes--;
         if (n == player) stNukes++;

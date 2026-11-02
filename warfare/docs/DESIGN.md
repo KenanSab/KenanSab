@@ -25,7 +25,7 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 
 ## Status
 
-**Built and covered by tests** (`core`: 16, `desktop`: 7 incl. a real-window UI test under xvfb):
+**Built and covered by tests** (`core`: 17, `desktop`: 7 incl. a real-window UI test under xvfb):
 
 * Map: 3,476 land provinces from real administrative regions, 271 sea zones, 198 nations, smooth vector borders.
 * Fog of war: vision quality levels, intel decay, hidden ownership/buildings/secret pacts, satellites, radar, recon,
