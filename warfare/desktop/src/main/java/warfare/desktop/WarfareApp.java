@@ -28,9 +28,28 @@ public final class WarfareApp {
             f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             f.setSize(1500, 900);
             f.setLocationRelativeTo(null);
-            start(f, world, chooseNation(f, world));
+            String forced = null;
+            for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
+            start(f, world, forced != null ? world.nationByTag.get(forced) : chooseNation(f, world));
             f.setVisible(true);
+            for (String a : args) if (a.equals("--smoke")) smoke(f);
         });
+    }
+
+    /** Plays the real window for a few seconds at top speed, then screenshots it and exits. */
+    static void smoke(JFrame f) {
+        GameUi ui = (GameUi) f.getContentPane();
+        ui.setSpeed(5);
+        javax.swing.Timer t = new javax.swing.Timer(8000, e -> {
+            try {
+                BufferedImage img = new BufferedImage(f.getWidth(), f.getHeight(), BufferedImage.TYPE_INT_RGB);
+                f.paint(img.getGraphics());
+                ImageIO.write(img, "png", new File("smoke.png"));
+                System.out.println("smoke ok, day " + ui.gs.day);
+            } catch (Exception ex) { ex.printStackTrace(); }
+            System.exit(0);
+        });
+        t.setRepeats(false); t.start();
     }
 
     static Path findAssets(String[] args) {
