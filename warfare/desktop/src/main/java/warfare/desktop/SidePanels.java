@@ -27,6 +27,7 @@ final class SidePanels {
 
     static void message(Component c, GameState.Result r) {
         if (r == null) return;
+        Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
         JOptionPane.showMessageDialog(c, r.message, r.ok ? "Done" : "Cannot do that", r.ok ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE);
     }
 

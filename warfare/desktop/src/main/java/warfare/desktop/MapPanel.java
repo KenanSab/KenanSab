@@ -475,6 +475,7 @@ final class MapPanel extends JPanel {
                 selArmy = h.armyId; selProv = gs.armies.containsKey(h.armyId) ? gs.armies.get(h.armyId).province : selProv;
                 Intel.Sighting sg = gs.intelOf(gs.player).sightingOf(h.armyId);
                 if (sg != null) selProv = sg.province;
+                Audio.get().play(Synth.Sfx.CLICK);
                 onSelect.run(); repaint(); return;
             }
         }
@@ -484,11 +485,13 @@ final class MapPanel extends JPanel {
         if (SwingUtilities.isLeftMouseButton(e) && sel != null && sel.owner == gs.player) {
             // click army, then click destination
             GameState.Result r = gs.orderMove(sel, id);
+            Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
             if (!r.ok) JOptionPane.showMessageDialog(this, r.message, "Order", JOptionPane.WARNING_MESSAGE);
             onOrder.run(); repaint();
             return;
         }
         selProv = id; selArmy = -1;
+        Audio.get().play(Synth.Sfx.CLICK);
         onSelect.run(); repaint();
     }
 }

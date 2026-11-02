@@ -53,7 +53,7 @@ final class Ui {
             addMouseListener(new MouseAdapter() {
                 @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
                 @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
-                @Override public void mouseClicked(MouseEvent e) { r.run(); }
+                @Override public void mouseClicked(MouseEvent e) { Audio.get().play(Synth.Sfx.CLICK); r.run(); }
             });
             return this;
         }
@@ -133,7 +133,7 @@ final class Ui {
         if (icon != null) b.setIcon(Assets.swingIcon(icon, 16, TEXT));
         b.setIconTextGap(7);
         b.setFocusable(false);
-        b.addActionListener(e -> r.run());
+        b.addActionListener(e -> { Audio.get().play(Synth.Sfx.CLICK); r.run(); });
         return b;
     }
 }

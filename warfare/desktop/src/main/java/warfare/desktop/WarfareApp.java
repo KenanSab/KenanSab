@@ -22,10 +22,13 @@ public final class WarfareApp {
         assets = findAssets(args);
         Fonts.load(assets);
         Assets.init(assets);
+        Settings.load();
         theme();
+        if (args.length >= 2 && args[0].equals("--export-audio")) { exportAudio(args[1]); return; }
         if (args.length >= 2 && args[0].equals("--picker")) { picker(args[1]); return; }
         if (args.length >= 2 && args[0].equals("--shot")) { System.setProperty("java.awt.headless", "true"); shot(args); return; }
         WorldData world = WorldData.load(assets);
+        Audio.get().start();
         SwingUtilities.invokeLater(() -> {
             JFrame f = new JFrame("Warfare");
             f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -125,6 +128,42 @@ public final class WarfareApp {
         });
         ImageIO.write(img[0], "png", new File(out));
         System.out.println("wrote " + out);
+    }
+
+    /** Writes the score (low and high tension mixes) and the effects as WAV files for inspection. */
+    static void exportAudio(String dir) throws Exception {
+        new File(dir).mkdirs();
+        Synth.Stems st = Synth.render(16, 1962);
+        double[][] mixes = {{0.62, 0.1, 0, 0}, {0.45, 0.7, 0.95, 0.8}};
+        String[] names = {"score_calm", "score_war"};
+        for (int m = 0; m < 2; m++) {
+            short[] pcm = new short[st.length() * 2];
+            for (int i = 0; i < st.length(); i++) {
+                double l = (st.padL()[i] * mixes[m][0] + st.bass()[i] * mixes[m][1] + st.perc()[i] * mixes[m][2] + st.ostinato()[i] * mixes[m][3]) * 0.4;
+                double r = (st.padR()[i] * mixes[m][0] + st.bass()[i] * mixes[m][1] + st.perc()[i] * mixes[m][2] + st.ostinato()[i] * mixes[m][3]) * 0.4;
+                pcm[2 * i] = (short) (Math.tanh(l) * 32000); pcm[2 * i + 1] = (short) (Math.tanh(r) * 32000);
+            }
+            writeWav(new File(dir, names[m] + ".wav"), pcm, 2);
+        }
+        for (Synth.Sfx s : Synth.Sfx.values()) {
+            float[] b = Synth.sfx(s);
+            short[] pcm = new short[b.length];
+            for (int i = 0; i < b.length; i++) pcm[i] = (short) (b[i] * 30000);
+            writeWav(new File(dir, "sfx_" + s.name().toLowerCase() + ".wav"), pcm, 1);
+        }
+        System.out.println("wrote audio to " + dir);
+    }
+
+    static void writeWav(File f, short[] pcm, int channels) throws Exception {
+        try (java.io.DataOutputStream o = new java.io.DataOutputStream(new java.io.BufferedOutputStream(new java.io.FileOutputStream(f)))) {
+            int dataLen = pcm.length * 2;
+            o.writeBytes("RIFF"); o.writeInt(Integer.reverseBytes(36 + dataLen)); o.writeBytes("WAVEfmt ");
+            o.writeInt(Integer.reverseBytes(16)); o.writeShort(Short.reverseBytes((short) 1)); o.writeShort(Short.reverseBytes((short) channels));
+            o.writeInt(Integer.reverseBytes(Synth.SR)); o.writeInt(Integer.reverseBytes(Synth.SR * channels * 2));
+            o.writeShort(Short.reverseBytes((short) (channels * 2))); o.writeShort(Short.reverseBytes((short) 16));
+            o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen));
+            for (short v : pcm) o.writeShort(Short.reverseBytes(v));
+        }
     }
 
     static void picker(String out) throws Exception {

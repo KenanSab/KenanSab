@@ -96,6 +96,7 @@ final class GameUi extends JPanel {
 
     static long simNs, colorNs, uiNs, ticks;
     private long lastRefresh;
+    private int seenNews;
 
     void tick() {
         long t0 = System.nanoTime();
@@ -107,8 +108,32 @@ final class GameUi extends JPanel {
         if (now - lastRefresh >= 70 || paused) { refresh(); lastRefresh = now; }
         else topBar.update(paused, speed);
         long t3 = System.nanoTime();
+        audioCues();
         simNs += t1 - t0; colorNs += t2 - t1; uiNs += t3 - t2; ticks++;
         handlePauses();
+    }
+
+    /** Maps game news and state to music tension and one-shot effects. */
+    void audioCues() {
+        int me = gs.player;
+        int wars = 0;
+        for (int n = 0; n < gs.N; n++) if (gs.war[me][n] && gs.ns[n].alive) wars++;
+        boolean fighting = false;
+        for (Army a : gs.armies.values()) if (a.owner == me && a.battleId >= 0) { fighting = true; break; }
+        double t = 0.12 + 0.16 * Math.min(3, wars) + (fighting ? 0.34 : 0) + (gs.nukesInFlight.isEmpty() ? 0 : 0.4) + (gs.ns[me].stability < 30 ? 0.1 : 0);
+        Audio.get().setTension(t);
+        if (seenNews > gs.news.size()) seenNews = 0;
+        for (int i = seenNews; i < gs.news.size(); i++) {
+            String s = gs.news.get(i);
+            String me3 = gs.nationName(me);
+            if (s.contains("NUCLEAR STRIKE") || s.contains("launches a nuclear")) Audio.get().play(Synth.Sfx.NUKE);
+            else if (s.contains("WAR:") && s.contains(me3)) Audio.get().play(Synth.Sfx.WAR_HORN);
+            else if (s.contains("captures") && s.contains(me3)) Audio.get().play(Synth.Sfx.CAPTURE);
+            else if (s.contains("Battle begins")) Audio.get().play(Synth.Sfx.BATTLE);
+            else if (s.contains("ALERT")) Audio.get().play(Synth.Sfx.ALERT);
+        }
+        seenNews = gs.news.size();
+        if (!gs.pendingEvents.isEmpty()) Audio.get().play(Synth.Sfx.CHIME);
     }
 
     void handlePauses() {
@@ -196,6 +221,9 @@ final class GameUi extends JPanel {
             game.add(load);
         }
         game.addSeparator();
+        JMenuItem settings = new JMenuItem("Settings...");
+        settings.addActionListener(e -> SettingsDialog.show(frame, this));
+        game.add(settings);
         JMenuItem nw = new JMenuItem("New game...");
         nw.addActionListener(e -> { timer.stop(); WarfareApp.start(frame, gs.world, WarfareApp.chooseNation(frame, gs.world)); });
         game.add(nw);
