@@ -10,6 +10,7 @@ import java.awt.geom.*;
 import java.awt.image.BufferedImage;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +41,10 @@ final class MapPanel extends JPanel {
     private final int[] fillArgb;
     private final byte[] arcClass;          // 0 none, 1 coast, 2 national, 3 province, 4 sea zone
     private final List<Label> labels = new ArrayList<>();
-    private BufferedImage layer;
+    private BufferedImage baseImg, fillImg, borderImg;
     private double layerOx, layerOy, layerZoom;
-    private boolean dirty = true;
+    private boolean viewDirty = true, fillDirty = true, borderDirty = true;
+    long renderNs, renders;
     private double zoom = 1, ox, oy;
     private boolean fitted;
     private Point dragFrom;
@@ -67,7 +69,7 @@ final class MapPanel extends JPanel {
                 if (dragged) { ox += dx; oy += dy; dragFrom = e.getPoint(); repaint(); }
             }
             @Override public void mouseReleased(MouseEvent e) {
-                if (!dragged) click(e); else { dirty = true; repaint(); }
+                if (!dragged) click(e); else { viewDirty = true; repaint(); }
                 dragFrom = null;
             }
             @Override public void mouseMoved(MouseEvent e) {
@@ -79,7 +81,7 @@ final class MapPanel extends JPanel {
                 double nz = Math.max(0.4, Math.min(16, zoom * f));
                 ox = e.getX() - (e.getX() - ox) * nz / zoom;
                 oy = e.getY() - (e.getY() - oy) * nz / zoom;
-                zoom = nz; dirty = true; repaint();
+                zoom = nz; viewDirty = true; repaint();
             }
         };
         addMouseListener(ma); addMouseMotionListener(ma); addMouseWheelListener(ma);
@@ -88,10 +90,10 @@ final class MapPanel extends JPanel {
 
     void centerOn(int province, double z) {
         WorldData.ProvinceInfo p = w.provinces.get(province);
-        zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; dirty = true; repaint();
+        zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; viewDirty = true; repaint();
     }
 
-    void setMode(Mode m) { mode = m; refreshColors(); }
+    void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); fillDirty = true; refreshColors(); repaint(); }
 
     // ------------------------------------------------------------------ labels
     /** One label per nation, placed over its largest contiguous landmass. */
@@ -127,17 +129,26 @@ final class MapPanel extends JPanel {
     void refreshColors() {
         Intel in = gs.intelOf(gs.player);
         int me = gs.player;
-        for (int p = 0; p < fillArgb.length; p++) fillArgb[p] = colorOf(p, in, me);
+        boolean fillChanged = false, borderChanged = false;
+        for (int p = 0; p < fillArgb.length; p++) {
+            int c = colorOf(p, in, me);
+            if (c != fillArgb[p]) { fillArgb[p] = c; fillChanged = true; }
+        }
         for (int a = 0; a < arcClass.length; a++) {
             int p1 = shapes.p1[a], p2 = shapes.p2[a];
-            if (p1 < 0 || p2 < 0) { arcClass[a] = 0; continue; }
-            boolean s1 = w.provinces.get(p1).sea, s2 = w.provinces.get(p2).sea;
-            if (s1 && s2) arcClass[a] = 4;
-            else if (s1 != s2) arcClass[a] = 1;
-            else arcClass[a] = (byte) (in.knownOwner[p1] != in.knownOwner[p2] ? 2 : 3);
+            byte cls;
+            if (p1 < 0 || p2 < 0) cls = 0;
+            else {
+                boolean s1 = w.provinces.get(p1).sea, s2 = w.provinces.get(p2).sea;
+                if (s1 && s2) cls = 4;
+                else if (s1 != s2) cls = 1;
+                else cls = (byte) (in.knownOwner[p1] != in.knownOwner[p2] ? 2 : 3);
+            }
+            if (cls != arcClass[a]) { arcClass[a] = cls; borderChanged = true; }
         }
-        dirty = true;
-        repaint();
+        if (fillChanged) fillDirty = true;
+        if (borderChanged) borderDirty = true;
+        if (fillChanged || borderChanged) repaint();
     }
 
     private static int argb(int rgb, double alpha) { return ((int) Math.max(0, Math.min(255, alpha * 255)) << 24) | (rgb & 0xFFFFFF); }
@@ -146,7 +157,7 @@ final class MapPanel extends JPanel {
         WorldData.ProvinceInfo pi = w.provinces.get(p);
         int q = in.quality[p];
         double conf = in.provinceConfidence(p, gs.day);
-        double stale = 1 - conf;
+        double stale = Math.round((1 - conf) * 12) / 12.0;   // quantised so fog changes only every few days
         switch (mode) {
             case TERRAIN -> {
                 if (q > 0) return 0;
@@ -183,41 +194,73 @@ final class MapPanel extends JPanel {
     }
 
     // ------------------------------------------------------------------ painting
-    private void renderLayer() {
+    private BufferedImage fresh(BufferedImage old, int type) {
         int W = Math.max(1, getWidth()), H = Math.max(1, getHeight());
-        if (layer == null || layer.getWidth() != W || layer.getHeight() != H) layer = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = layer.createGraphics();
-        g.setColor(getBackground());
-        g.fillRect(0, 0, W, H);
+        return old != null && old.getWidth() == W && old.getHeight() == H ? old : new BufferedImage(W, H, type);
+    }
+
+    private Graphics2D hq(BufferedImage img) {
+        Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-        AffineTransform at = new AffineTransform();
-        at.translate(ox, oy);
-        at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
-        g.drawImage(basemap.image, at, null);
-
-        g.translate(ox, oy);
-        g.scale(zoom, zoom);
-        Rectangle2D view = new Rectangle2D.Double(-ox / zoom - 2, -oy / zoom - 2, W / zoom + 4, H / zoom + 4);
-        for (int p = 0; p < fillArgb.length; p++) {
-            int c = fillArgb[p];
-            if ((c >>> 24) == 0 || !view.intersects(shapes.bounds[p])) continue;
-            g.setColor(new Color(c, true));
-            g.fill(shapes.fill[p]);
-        }
-        // borders, quietest first
-        if (zoom >= 0.9) strokeArcs(g, view, 4, new Color(255, 255, 255, 34), 0.8, false);
-        if (zoom >= 1.15) strokeArcs(g, view, 3, new Color(14, 18, 26, 105), 0.9, false);
-        strokeArcs(g, view, 1, new Color(150, 196, 236, 55), 5.0, true);
-        strokeArcs(g, view, 2, new Color(8, 10, 16, 215), 1.7, false);
-        strokeArcs(g, view, 1, new Color(6, 14, 28, 230), 1.35, true);
-        g.dispose();
-        layerOx = ox; layerOy = oy; layerZoom = zoom;
-        dirty = false;
+        return g;
     }
 
-    private void strokeArcs(Graphics2D g, Rectangle2D view, int cls, Color c, double px, boolean glow) {
+    private void renderLayers() {
+        long t0 = System.nanoTime();
+        int W = Math.max(1, getWidth()), H = Math.max(1, getHeight());
+        boolean resized = baseImg == null || baseImg.getWidth() != W || baseImg.getHeight() != H;
+        boolean view = viewDirty || resized || layerZoom != zoom;
+        Rectangle2D worldView = new Rectangle2D.Double(-ox / zoom - 2, -oy / zoom - 2, W / zoom + 4, H / zoom + 4);
+        if (view) {
+            baseImg = fresh(baseImg, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = hq(baseImg);
+            g.setColor(getBackground());
+            g.fillRect(0, 0, W, H);
+            AffineTransform at = new AffineTransform();
+            at.translate(ox, oy);
+            at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
+            g.drawImage(basemap.image, at, null);
+            g.dispose();
+        }
+        if (view || fillDirty) {
+            fillImg = fresh(fillImg, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = hq(fillImg);
+            g.setComposite(AlphaComposite.Clear);
+            g.fillRect(0, 0, W, H);
+            g.setComposite(AlphaComposite.SrcOver);
+            g.translate(ox, oy);
+            g.scale(zoom, zoom);
+            for (int p = 0; p < fillArgb.length; p++) {
+                int c = fillArgb[p];
+                if ((c >>> 24) == 0 || !worldView.intersects(shapes.bounds[p])) continue;
+                g.setColor(new Color(c, true));
+                g.fill(shapes.fill[p]);
+            }
+            g.dispose();
+        }
+        if (view || borderDirty) {
+            borderImg = fresh(borderImg, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = hq(borderImg);
+            g.setComposite(AlphaComposite.Clear);
+            g.fillRect(0, 0, W, H);
+            g.setComposite(AlphaComposite.SrcOver);
+            g.translate(ox, oy);
+            g.scale(zoom, zoom);
+            if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 34), 0.8);
+            if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(14, 18, 26, 105), 0.9);
+            strokeArcs(g, worldView, 1, new Color(150, 196, 236, 55), 5.0);
+            strokeArcs(g, worldView, 2, new Color(8, 10, 16, 215), 1.7);
+            strokeArcs(g, worldView, 1, new Color(6, 14, 28, 230), 1.35);
+            g.dispose();
+        }
+        if (view) { layerOx = ox; layerOy = oy; layerZoom = zoom; }
+        viewDirty = fillDirty = borderDirty = false;
+        renderNs += System.nanoTime() - t0; renders++;
+    }
+
+    private void strokeArcs(Graphics2D g, Rectangle2D view, int cls, Color c, double px) {
         g.setColor(c);
         g.setStroke(new BasicStroke((float) (px / zoom), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         for (int a = 0; a < arcClass.length; a++)
@@ -231,10 +274,13 @@ final class MapPanel extends JPanel {
         if (!fitted && getWidth() > 0) {
             zoom = Math.max(0.5, getWidth() / (double) w.width);
             ox = 0; oy = (getHeight() - w.height * zoom) / 2;
-            fitted = true; dirty = true;
+            fitted = true; viewDirty = true;
         }
-        if (dirty || layer == null || layer.getWidth() != getWidth() || layer.getHeight() != getHeight() || layerZoom != zoom) renderLayer();
-        g.drawImage(layer, (int) Math.round(ox - layerOx), (int) Math.round(oy - layerOy), null);
+        if (viewDirty || fillDirty || borderDirty || baseImg == null || baseImg.getWidth() != getWidth() || baseImg.getHeight() != getHeight() || layerZoom != zoom) renderLayers();
+        int dx = (int) Math.round(ox - layerOx), dy = (int) Math.round(oy - layerOy);
+        g.drawImage(baseImg, dx, dy, null);
+        g.drawImage(fillImg, dx, dy, null);
+        g.drawImage(borderImg, dx, dy, null);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
@@ -291,23 +337,40 @@ final class MapPanel extends JPanel {
         }
     }
 
-    private void drawTracked(Graphics2D g, String text, double cx, double cy, float size, double tracking, Color fill, Color halo) {
-        Font f = Fonts.label(size);
+    private final Map<String, Shape> textCache = new HashMap<>();
+
+    /** Outline of tracked text centred on (0, 0); cached because glyph layout is the slowest thing in a frame. */
+    private Shape trackedShape(Graphics2D g, String text, int sizePx, int trackingTenths) {
+        String key = text + "|" + sizePx + "|" + trackingTenths;
+        Shape cached = textCache.get(key);
+        if (cached != null) return cached;
+        Font f = Fonts.label(sizePx);
         FontMetrics fm = g.getFontMetrics(f);
-        double total = 0;
+        double tracking = trackingTenths / 10.0, total = 0;
         for (char ch : text.toCharArray()) total += fm.charWidth(ch) + tracking;
         total -= tracking;
-        double x = cx - total / 2, y = cy + fm.getAscent() * 0.35;
+        double x = -total / 2, y = fm.getAscent() * 0.35;
+        Path2D.Double path = new Path2D.Double();
         for (char ch : text.toCharArray()) {
             GlyphVector gv = f.createGlyphVector(g.getFontRenderContext(), String.valueOf(ch));
-            Shape s = gv.getOutline((float) x, (float) y);
-            g.setColor(halo);
-            g.setStroke(new BasicStroke(Math.max(2f, size / 5f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.draw(s);
-            g.setColor(fill);
-            g.fill(s);
+            path.append(gv.getOutline((float) x, (float) y), false);
             x += fm.charWidth(ch) + tracking;
         }
+        if (textCache.size() > 4000) textCache.clear();
+        textCache.put(key, path);
+        return path;
+    }
+
+    private void drawTracked(Graphics2D g, String text, double cx, double cy, float size, double tracking, Color fill, Color halo) {
+        Shape s = trackedShape(g, text, Math.round(size), (int) Math.round(tracking * 10));
+        AffineTransform old = g.getTransform();
+        g.translate(cx, cy);
+        g.setColor(halo);
+        g.setStroke(new BasicStroke(Math.max(2f, size / 5f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.draw(s);
+        g.setColor(fill);
+        g.fill(s);
+        g.setTransform(old);
     }
 
     private void drawPath(Graphics2D g) {

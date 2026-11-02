@@ -42,6 +42,7 @@ final class GameUi extends JPanel {
         tabs.addTab("Diplomacy", Assets.swingIcon("tab_diplo", 18, Ui.TEXT), diplomacy);
         tabs.addTab("Reports", Assets.swingIcon("tab_reports", 18, Ui.TEXT), log);
         tabs.setPreferredSize(new Dimension(410, 100));
+        tabs.addChangeListener(e -> updateVisibleTab());
         tabs.setFont(Fonts.label(15f));
         topBar = new TopBar(gs, () -> setPaused(!paused), this::setSpeed);
         add(topBar, BorderLayout.NORTH);
@@ -93,10 +94,20 @@ final class GameUi extends JPanel {
 
     void setSpeed(int s) { speed = s; timer.setDelay(DAY_MS()); if (paused) setPaused(false); else refresh(); }
 
+    static long simNs, colorNs, uiNs, ticks;
+    private long lastRefresh;
+
     void tick() {
+        long t0 = System.nanoTime();
         gs.advanceDay();
+        long t1 = System.nanoTime();
         map.refreshColors();
-        refresh();
+        long t2 = System.nanoTime();
+        long now = System.currentTimeMillis();
+        if (now - lastRefresh >= 70 || paused) { refresh(); lastRefresh = now; }
+        else topBar.update(paused, speed);
+        long t3 = System.nanoTime();
+        simNs += t1 - t0; colorNs += t2 - t1; uiNs += t3 - t2; ticks++;
         handlePauses();
     }
 
@@ -149,11 +160,16 @@ final class GameUi extends JPanel {
         topBar.update(paused, speed);
         int n = gs.news.size();
         newsBar.setText(n == 0 ? " " : gs.news.get(n - 1));
-        selection.update();
-        production.update();
-        diplomacy.update();
-        log.update();
+        updateVisibleTab();
         map.repaint();
+    }
+
+    void updateVisibleTab() {
+        Component c = tabs.getSelectedComponent();
+        if (c == selection) selection.update();
+        else if (c == production) production.update();
+        else if (c == diplomacy) diplomacy.update();
+        else if (c == log) log.update();
     }
 
     JMenuBar menuBar() {

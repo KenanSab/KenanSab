@@ -48,7 +48,8 @@ public final class WarfareApp {
                 BufferedImage img = new BufferedImage(f.getWidth(), f.getHeight(), BufferedImage.TYPE_INT_RGB);
                 f.paint(img.getGraphics());
                 ImageIO.write(img, "png", new File("smoke.png"));
-                System.out.println("smoke ok, day " + ui.gs.day);
+                System.out.printf("renders %d avg %.1f ms%n", ui.map.renders, ui.map.renderNs / 1e6 / Math.max(1, ui.map.renders));
+                System.out.printf("smoke ok, day %d | per tick ms: sim %.1f colors %.1f ui+paint %.1f (%d ticks)%n", ui.gs.day, GameUi.simNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.colorNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.uiNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.ticks);
             } catch (Exception ex) { ex.printStackTrace(); }
             System.exit(0);
         });
