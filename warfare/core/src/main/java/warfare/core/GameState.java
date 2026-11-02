@@ -39,6 +39,9 @@ public final class GameState implements Serializable {
     public final List<Combat.Report> reports = new ArrayList<>();
     public final List<GameEvent> pendingEvents = new ArrayList<>();
     public boolean pauseRequested;
+    public boolean ironman;
+    // achievement statistics for the player
+    public int stCaptures, stBattlesWon, stTacticWins, stAmbushWins, stCapitals, stNukes;
     public final Set<Integer> awaitingTactic = new LinkedHashSet<>();
 
     // ------------------------------------------------------------------ setup
@@ -516,6 +519,7 @@ public final class GameState implements Serializable {
         if (!site) return no("No operational silo.");
         if (isSea(target)) return no("Target must be land.");
         s.nukes--;
+        if (n == player) stNukes++;
         nukesInFlight.add(new int[]{n, target, day + 1});
         news("ALERT: " + nationName(n) + " launches a nuclear missile at " + prov(target).name + " (" + nationName(owner[target]) + ")!");
         return ok("Missile launched. Impact in 1 day.");

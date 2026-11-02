@@ -87,6 +87,14 @@ final class War {
                 "Defender", gs.nationName(def.owner), b.defLost, 100 * b.defLost / Math.max(1, b.defStartHp),
                 b.lastNote, gs.prov(b.province).terrain, b.attackerUnseen ? " (attacker approached unseen)" : "",
                 gs.nationName(winner.owner));
+        if (winner.owner == gs.player && (att.owner == gs.player || def.owner == gs.player)) {
+            gs.stBattlesWon++;
+            Tactic mine = winner == att ? b.attTactic : b.defTactic, theirs = winner == att ? b.defTactic : b.attTactic;
+            if (mine != null && theirs != null && mine.beats(theirs)) gs.stTacticWins++;
+            if (mine == Tactic.AMBUSH && (winner == att ? b.attackerUnseen : b.defenderUnseen)) gs.stAmbushWins++;
+        }
+        r.attackerTactic = b.attTactic == null ? "" : b.attTactic.label;
+        r.defenderTactic = b.defTactic == null ? "" : b.defTactic.label;
         if (att.owner == gs.player || def.owner == gs.player) gs.reports.add(r);
         else if (gs.intel[gs.player] != null && gs.intel[gs.player].quality[b.province] > 0)
             gs.news("Battle at " + r.provinceName + ": " + gs.nationName(winner.owner) + " prevails.");
@@ -151,6 +159,7 @@ final class War {
             gs.ns[victim].stability = Math.max(0, gs.ns[victim].stability - (p == vi.capital ? 8 : 0.6));
             for (NationState.Construction c : gs.ns[victim].constructions) if (c.province == p) c.daysLeft = 0;
         }
+        if (by == gs.player) { gs.stCaptures++; if (vi != null && p == vi.capital) gs.stCapitals++; }
         if (by == gs.player || victim == gs.player) gs.news(gs.nationName(by) + " captures " + gs.prov(p).name + " from " + gs.nationName(victim) + ".");
     }
 

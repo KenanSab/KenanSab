@@ -175,4 +175,105 @@ class GameTest {
         assertEquals(gs.devastation[target], back.devastation[target]);
         back.advanceDay();
     }
+
+    // ------------------------------------------------------------------ invariants + soak
+    static void checkInvariants(GameState gs, String when) {
+        for (int p = 0; p < gs.P; p++) {
+            if (gs.isSea(p)) { assertEquals(-2, gs.owner[p], when + " sea owner"); continue; }
+            assertTrue(gs.owner[p] >= 0 && gs.owner[p] < gs.N, when + " owner of " + p + " = " + gs.owner[p]);
+            assertTrue(gs.ns[gs.owner[p]].alive, when + " province " + p + " owned by dead nation");
+            assertTrue(gs.devastation[p] >= 0 && gs.devastation[p] <= 1.0001f, when + " devastation");
+            assertTrue(gs.unrest[p] >= 0 && gs.unrest[p] <= 100.001f, when + " unrest");
+        }
+        for (Army a : gs.armies.values()) {
+            assertTrue(a.alive(), when + " dead army kept");
+            assertTrue(a.province >= 0 && a.province < gs.P, when + " army province");
+            if (gs.isSea(a.province)) assertTrue(a.embarked, when + " army at sea must be embarked");
+            for (double u : a.units) { assertFalse(Double.isNaN(u) || u < 0, when + " unit count " + u); }
+            assertTrue(a.morale >= 0 && a.morale <= 100.001, when + " morale " + a.morale);
+            if (a.battleId >= 0) assertTrue(gs.battles.containsKey(a.battleId), when + " dangling battle");
+        }
+        for (Combat.Battle b : gs.battles.values()) {
+            assertTrue(gs.armies.containsKey(b.attacker) && gs.armies.containsKey(b.defender), when + " battle without armies");
+        }
+        for (int n = 0; n < gs.N; n++) {
+            NationState s = gs.ns[n];
+            for (double v : new double[]{s.money, s.manpower, s.oil, s.stability}) assertFalse(Double.isNaN(v) || Double.isInfinite(v), when + " nation stat");
+            assertTrue(s.stability >= 0 && s.stability <= 100, when + " stability");
+            assertTrue(s.manpower >= -0.001, when + " manpower " + s.manpower);
+            assertEquals(false, gs.war[n][n]);
+            for (int m = 0; m < gs.N; m++) assertEquals(gs.war[n][m], gs.war[m][n], when + " war symmetry");
+        }
+    }
+
+    @Test
+    void soakThreeYearsKeepsTheWorldConsistent() {
+        for (String tag : new String[]{"FRA", "BRA"}) {
+            GameState gs = game(tag);
+            int wars = 0, maxWars = 0;
+            for (int d = 0; d < 1100; d++) {
+                gs.advanceDay();
+                gs.pauseRequested = false; gs.pendingEvents.clear(); gs.awaitingTactic.clear();
+                if (d % 100 == 99) {
+                    checkInvariants(gs, tag + " day " + gs.day);
+                    int w = 0;
+                    for (int a = 0; a < gs.N; a++) for (int b = a + 1; b < gs.N; b++) if (gs.war[a][b]) w++;
+                    maxWars = Math.max(maxWars, w);
+                }
+            }
+            int alive = 0;
+            for (NationState s : gs.ns) if (s.alive) alive++;
+            System.out.println(tag + " soak: nations alive " + alive + "/" + gs.N + ", max concurrent wars " + maxWars + ", armies " + gs.armies.size());
+            assertTrue(alive > gs.N * 0.8, "world should not collapse: " + alive);
+        }
+    }
+
+    @Test
+    void achievementsUnlockFromStatistics() {
+        GameState gs = game("FRA");
+        java.util.Set<String> have = new java.util.HashSet<>();
+        assertTrue(Achievements.newlyUnlocked(gs, have).stream().noneMatch(d -> d.id().equals("FIRST_BLOOD")));
+        gs.stBattlesWon = 1; gs.stCaptures = 12; gs.stNukes = 1;
+        var ids = Achievements.newlyUnlocked(gs, have).stream().map(Achievements.Def::id).toList();
+        assertTrue(ids.contains("FIRST_BLOOD") && ids.contains("LAND_GRAB") && ids.contains("DOOMSDAY"), ids.toString());
+        assertFalse(ids.contains("CONQUEROR"));
+        have.addAll(ids);
+        assertTrue(Achievements.newlyUnlocked(gs, have).stream().noneMatch(d -> ids.contains(d.id())), "no double unlock");
+        for (Achievements.Def d : Achievements.ALL) assertNotNull(Achievements.byId(d.id()));
+    }
+
+    @Test
+    void realBattlesFeedAchievementStatistics() {
+        GameState gs = game("RUS");
+        int me = gs.player, foe = world.nationByTag.get("UKR");
+        int p = world.nations.get(foe).capital;
+        gs.armies.clear();
+        Army mine = place(gs, me, p, 14, 6), theirs = place(gs, foe, p, 3, 0);
+        gs.war[me][foe] = gs.war[foe][me] = true;
+        gs.controller[p] = foe; gs.owner[p] = foe;
+        gs.setTactic(mine, Tactic.FLANKING); gs.setTactic(theirs, Tactic.HOLD_THE_LINE);
+        War.contacts(gs);
+        for (int d = 0; d < 25 && !gs.battles.isEmpty(); d++) { gs.day++; War.resolveBattles(gs); }
+        assertEquals(1, gs.stBattlesWon);
+        assertEquals(1, gs.stTacticWins, "flanking counters hold the line");
+        assertFalse(gs.reports.isEmpty());
+        assertEquals("Flanking / Envelopment", gs.reports.get(0).attackerTactic.isEmpty() ? gs.reports.get(0).defenderTactic : gs.reports.get(0).attackerTactic.equals("Flanking / Envelopment") ? "Flanking / Envelopment" : "?");
+        // and capturing the capital counts
+        for (int i = 0; i < 12 && gs.owner[p] == foe; i++) { gs.day++; War.occupation(gs); }
+        assertEquals(me, gs.owner[p]);
+        assertTrue(gs.stCaptures >= 1 && gs.stCapitals >= 1);
+    }
+
+    @Test
+    void ironmanFlagSurvivesSaveLoad() throws Exception {
+        GameState gs = game("FRA");
+        gs.ironman = true; gs.stCaptures = 7;
+        Path f = Files.createTempFile("warfare-iron", ".sav");
+        gs.save(f);
+        GameState back = GameState.load(f, world);
+        assertTrue(back.ironman);
+        assertEquals(7, back.stCaptures);
+        back.advanceDay();
+        checkInvariants(back, "after load");
+    }
 }

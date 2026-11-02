@@ -17,6 +17,8 @@ final class NationPicker extends JPanel {
     private final JList<WorldData.NationInfo> list = new JList<>(model);
     private final JPanel preview = new JPanel();
     private final JTextField search = new JTextField();
+    private final JCheckBox ironman = new JCheckBox("Ironman (autosave only, no loading)");
+    record Choice(int nation, boolean ironman) {}
 
     NationPicker(WorldData w) {
         super(new BorderLayout(14, 0));
@@ -107,13 +109,17 @@ final class NationPicker extends JPanel {
 
     WorldData.NationInfo selected() { return list.getSelectedValue(); }
 
-    static int pick(JFrame owner, WorldData w) {
+    static Choice pick(JFrame owner, WorldData w) {
         NationPicker p = new NationPicker(w);
         JDialog d = new JDialog(owner, "Warfare - choose your nation", true);
         JButton go = Ui.button("START CAMPAIGN", "battle", d::dispose);
         go.setFont(Fonts.label(18f));
         JPanel south = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         south.setBackground(Ui.PANEL);
+        p.ironman.setOpaque(false);
+        p.ironman.setFont(Fonts.ui(13.5f));
+        p.ironman.setToolTipText("One life: the game saves itself every 30 days and you cannot load older saves.");
+        south.add(p.ironman);
         south.add(go);
         d.setLayout(new BorderLayout());
         d.add(p, BorderLayout.CENTER);
@@ -123,6 +129,6 @@ final class NationPicker extends JPanel {
         d.getRootPane().setDefaultButton(go);
         d.setVisible(true);
         WorldData.NationInfo n = p.selected();
-        return n == null ? w.nationByTag.get("FRA") : n.index;
+        return new Choice(n == null ? w.nationByTag.get("FRA") : n.index, p.ironman.isSelected());
     }
 }

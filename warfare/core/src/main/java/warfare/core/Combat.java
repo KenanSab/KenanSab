@@ -20,7 +20,7 @@ public final class Combat {
 
     public static final class Report implements Serializable {
         public int day, province, attackerNation, defenderNation, winnerNation;
-        public String attackerName, defenderName, provinceName, text;
+        public String attackerName, defenderName, provinceName, text, attackerTactic = "", defenderTactic = "";
         public double attLost, defLost;
         public int days;
     }

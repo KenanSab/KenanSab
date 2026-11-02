@@ -50,6 +50,46 @@ final class MapPanel extends JPanel {
     private Point dragFrom;
     private boolean dragged;
     private final List<Hit> hits = new ArrayList<>();
+    private record Toast(String title, String text, String icon, long until) {}
+    private final List<Toast> toasts = new ArrayList<>();
+    private javax.swing.Timer toastTimer;
+
+    /** Short pop-up in the top-right corner (achievements, notices). */
+    void toast(String title, String text, String icon) {
+        toasts.add(new Toast(title, text, icon, System.currentTimeMillis() + 5200));
+        if (toastTimer == null) { toastTimer = new javax.swing.Timer(60, e -> { toasts.removeIf(t -> t.until < System.currentTimeMillis()); repaint(); if (toasts.isEmpty()) toastTimer.stop(); }); }
+        if (!toastTimer.isRunning()) toastTimer.start();
+        repaint();
+    }
+
+    private void drawToasts(Graphics2D g) {
+        long now = System.currentTimeMillis();
+        int y = 12;
+        for (Toast t : toasts) {
+            double life = (t.until - now) / 5200.0;
+            float a = (float) Math.max(0, Math.min(1, Math.min(life * 6, (1 - life) * 8)));
+            int w = 330, h = 62, x = getWidth() - w - 14;
+            Composite old = g.getComposite();
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+            g.setColor(new Color(10, 16, 28, 235));
+            g.fillRoundRect(x, y, w, h, 16, 16);
+            g.setColor(new Color(236, 192, 92, 200));
+            g.setStroke(new BasicStroke(1.6f));
+            g.drawRoundRect(x, y, w, h, 16, 16);
+            g.drawImage(Assets.icon(t.icon, 36, new Color(236, 192, 92)), x + 12, y + 13, null);
+            g.setFont(Fonts.label(12.5f));
+            g.setColor(new Color(236, 192, 92));
+            g.drawString("ACHIEVEMENT UNLOCKED", x + 58, y + 20);
+            g.setFont(Fonts.title(21f));
+            g.setColor(Color.WHITE);
+            g.drawString(t.title.toUpperCase(), x + 58, y + 40);
+            g.setFont(Fonts.ui(12f));
+            g.setColor(new Color(170, 182, 206));
+            g.drawString(t.text, x + 58, y + 55);
+            g.setComposite(old);
+            y += h + 8;
+        }
+    }
 
     MapPanel(GameState gs, Path mapDir) {
         this.gs = gs; this.w = gs.world;
@@ -290,6 +330,7 @@ final class MapPanel extends JPanel {
         drawPath(g);
         drawArmies(g);
         drawLegend(g);
+        drawToasts(g);
     }
 
     private Point2D.Double screen(int p) {

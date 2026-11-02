@@ -23,6 +23,8 @@ public final class WarfareApp {
         Fonts.load(assets);
         Assets.init(assets);
         Settings.load();
+        Profile.load();
+        Steam.init();
         theme();
         if (args.length >= 2 && args[0].equals("--export-audio")) { exportAudio(args[1]); return; }
         if (args.length >= 2 && args[0].equals("--picker")) { picker(args[1]); return; }
@@ -36,7 +38,7 @@ public final class WarfareApp {
             f.setLocationRelativeTo(null);
             String forced = null;
             for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
-            start(f, world, forced != null ? world.nationByTag.get(forced) : chooseNation(f, world));
+            start(f, world, forced != null ? new NationPicker.Choice(world.nationByTag.get(forced), false) : chooseNation(f, world));
             f.setVisible(true);
             for (String a : args) if (a.equals("--smoke")) smoke(f);
         });
@@ -76,10 +78,11 @@ public final class WarfareApp {
         throw new IllegalStateException("Cannot find assets/map. Pass --assets <dir>.");
     }
 
-    static int chooseNation(JFrame f, WorldData w) { return NationPicker.pick(f, w); }
+    static NationPicker.Choice chooseNation(JFrame f, WorldData w) { return NationPicker.pick(f, w); }
 
-    static void start(JFrame f, WorldData world, int nation) {
-        GameState gs = new GameState(world, nation, System.nanoTime());
+    static void start(JFrame f, WorldData world, NationPicker.Choice choice) {
+        GameState gs = new GameState(world, choice.nation(), System.nanoTime());
+        gs.ironman = choice.ironman();
         install(f, new GameUi(gs, f));
     }
 
@@ -117,6 +120,7 @@ public final class WarfareApp {
             if (args.length > 5) ui.map.setMode(MapPanel.Mode.valueOf(args[5]));
             ui.map.selProv = fp;
             if (args.length > 6) ui.tabs.setSelectedIndex(Integer.parseInt(args[6]));
+            if (args.length > 8 && args[8].equals("toast")) ui.map.toast("Out of Nowhere", "Win a battle with Ambush while unseen.", "t_ambush");
             if (args.length > 7 && args[7].equals("army"))
                 for (Army a : gs.armies.values()) if (a.owner == me) { ui.map.selArmy = a.id; ui.map.selProv = a.province; break; }
             ui.refresh();

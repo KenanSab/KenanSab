@@ -109,8 +109,38 @@ final class GameUi extends JPanel {
         else topBar.update(paused, speed);
         long t3 = System.nanoTime();
         audioCues();
+        metaChecks();
         simNs += t1 - t0; colorNs += t2 - t1; uiNs += t3 - t2; ticks++;
         handlePauses();
+    }
+
+    private boolean gameOverShown;
+
+    /** Autosave, achievements and the game-over screen. */
+    void metaChecks() {
+        if (gs.day > 0 && gs.day % 30 == 0 && (Settings.autosave || gs.ironman)) {
+            try { gs.save(savePath(gs.ironman ? "ironman" : "autosave")); } catch (Exception ignored) {}
+        }
+        if (gs.day % 5 == 0) {
+            for (warfare.core.Achievements.Def d : Profile.check(gs)) {
+                map.toast(d.title(), d.description(), d.icon());
+                Audio.get().play(Synth.Sfx.CAPTURE);
+            }
+        }
+        if (!gs.ns[gs.player].alive && !gameOverShown) {
+            gameOverShown = true;
+            setPaused(true);
+            SwingUtilities.invokeLater(this::gameOver);
+        }
+    }
+
+    void gameOver() {
+        String stats = String.format("%s fell on %s.%n%nProvinces captured: %d   Battles won: %d   Capitals taken: %d",
+                gs.nationName(gs.player), gs.date(), gs.stCaptures, gs.stBattlesWon, gs.stCapitals);
+        int c = JOptionPane.showOptionDialog(this, stats, "Your nation has been eliminated", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
+                new Object[]{"New game", "Keep watching", "Quit"}, "New game");
+        if (c == 0) { timer.stop(); WarfareApp.start(frame, gs.world, WarfareApp.chooseNation(frame, gs.world)); }
+        else if (c == 2) System.exit(0);
     }
 
     /** Maps game news and state to music tension and one-shot effects. */
@@ -207,6 +237,7 @@ final class GameUi extends JPanel {
                 try { gs.save(savePath(sl)); JOptionPane.showMessageDialog(this, "Saved to slot " + sl + "."); }
                 catch (Exception ex) { JOptionPane.showMessageDialog(this, "Save failed: " + ex.getMessage()); }
             });
+            save.setEnabled(!gs.ironman);
             game.add(save);
         }
         for (int slot = 1; slot <= 3; slot++) {
@@ -218,8 +249,18 @@ final class GameUi extends JPanel {
                     WarfareApp.install(frame, new GameUi(g2, frame));
                 } catch (Exception ex) { JOptionPane.showMessageDialog(this, "No save in slot " + sl + "."); }
             });
+            load.setEnabled(!gs.ironman);
             game.add(load);
         }
+        JMenuItem loadAuto = new JMenuItem(gs.ironman ? "Resume ironman save" : "Load autosave");
+        loadAuto.addActionListener(e -> {
+            try { WarfareApp.install(frame, new GameUi(GameState.load(savePath(gs.ironman ? "ironman" : "autosave"), gs.world), frame)); }
+            catch (Exception ex) { JOptionPane.showMessageDialog(this, "No autosave yet."); }
+        });
+        game.add(loadAuto);
+        JMenuItem ach = new JMenuItem("Achievements...");
+        ach.addActionListener(e -> AchievementsDialog.show(frame));
+        game.add(ach);
         game.addSeparator();
         JMenuItem settings = new JMenuItem("Settings...");
         settings.addActionListener(e -> SettingsDialog.show(frame, this));
@@ -263,5 +304,6 @@ final class GameUi extends JPanel {
         return mb;
     }
 
-    static Path savePath(int slot) { return Path.of(System.getProperty("user.home"), ".warfare", "slot" + slot + ".sav"); }
+    static Path savePath(int slot) { return savePath("slot" + slot); }
+    static Path savePath(String name) { return Path.of(System.getProperty("user.home"), ".warfare", name + ".sav"); }
 }
