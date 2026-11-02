@@ -9,7 +9,7 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 |---|---|
 | Platform / engine | Steam release is the goal. Java 21 (the user reports Age of History 3 used a custom Java engine; that engine is proprietary, so this project has its own). Simulation is renderer-independent (`core`), the Swing client (`desktop`) is replaceable by LWJGL/libGDX for Steam. |
 | Setting | Modern day / near future, all ~190 countries playable (197 sovereign nations on the map). |
-| Map | Provinces on a real-world map: 3,400+ land provinces built from real administrative regions (Natural Earth 10m admin-1; oversized regions split, tiny ones merged) and ~270 sea zones, with smooth vector borders (`tools`). Satellite imagery was unreachable offline, so terrain is a latitude/region approximation. |
+| Map | Provinces on a real-world map: 3,400+ land provinces built from real administrative regions (Natural Earth 10m admin-1; oversized regions split, tiny ones merged) and ~270 sea zones, with smooth vector borders (`tools`). Terrain is procedural (no imagery): blended terrain colours, ridged height noise lit from the north-west into a relief layer that is drawn over the political colours, snow caps, depth-graded ocean with surf. Natural Earth rivers, lakes and 1,200 major cities sit on top; country names follow a curved spine fitted to each landmass. |
 | Time | Real-time with pause, 5 speeds (Space pause, keys 1-5). |
 | Players | Single-player vs AI first. |
 | Fog of war | Classic vision radius, plus: hides unit location, strength and type, province ownership and buildings, and secret alliances. Vision from units, provinces, recon/aircraft, radar, satellites (tech), agents, allied sharing. Old intel **fades over time**. Province-based flat shading. |
@@ -25,7 +25,7 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 
 ## Status
 
-**Built and covered by tests** (`core`: 29, `desktop`: 12 incl. a real-window UI test under xvfb):
+**Built and covered by tests** (`core`: 30, `desktop`: 17 incl. real-window UI tests and a random-input fuzz test under xvfb):
 
 * Map: 3,476 land provinces from real administrative regions, 271 sea zones, 198 nations, smooth vector borders.
 * Fog of war: vision quality levels, intel decay, hidden ownership/buildings/secret pacts, satellites, radar, recon,

@@ -34,8 +34,11 @@ public final class WarfareApp {
         if (args.length >= 2 && args[0].equals("--basemap")) {
             System.setProperty("java.awt.headless", "true");
             WorldData world = WorldData.load(assets);
-            ImageIO.write(basemap(world).image, "png", new File(args[1]));
-            System.out.println("wrote " + args[1]);
+            System.setProperty("warfare.rebake", "true");
+            Basemap bm = basemap(world);
+            bm.bake(assets);
+            ImageIO.write(bm.image, "png", new File(args[1]));
+            System.out.println("baked basemap, relief and sea mask into " + assets + " and wrote " + args[1]);
             return;
         }
         if (args.length >= 2 && args[0].equals("--start")) { System.setProperty("java.awt.headless", "true"); startShot(args); return; }
@@ -49,6 +52,7 @@ public final class WarfareApp {
             f.setLocationRelativeTo(null);
             String forced = null;
             for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
+            if (forced == null && java.util.Arrays.asList(args).contains("--smoke")) forced = "FRA";   // unattended runs skip the menu
             if (forced != null) start(f, world, new StartScreen.Choice(world.nationByTag.get(forced), false)); else showStart(f, world);
             f.setVisible(true);
             for (int i = 0; i < args.length; i++) if (args[i].equals("--smoke")) smoke(f, i + 1 < args.length && args[i + 1].matches("\\d+") ? Integer.parseInt(args[i + 1]) : 8);
@@ -140,8 +144,21 @@ public final class WarfareApp {
     }
 
     static synchronized Basemap basemap(WorldData world) {
-        if (sharedBasemap == null) sharedBasemap = new Basemap(shapes(world), world);
+        if (sharedBasemap == null) sharedBasemap = new Basemap(shapes(world), world, assets);
         return sharedBasemap;
+    }
+
+    private static MapExtras sharedExtras;
+    private static MapLayers sharedLayers;
+
+    static synchronized MapExtras extras(WorldData world) {
+        if (sharedExtras == null) sharedExtras = MapExtras.load(assets, world);
+        return sharedExtras;
+    }
+
+    static synchronized MapLayers layers(WorldData world) {
+        if (sharedLayers == null) sharedLayers = new MapLayers(world, shapes(world), basemap(world), extras(world));
+        return sharedLayers;
     }
 
     /** Shows the start screen in the frame; choosing a nation begins a new game. */
@@ -261,6 +278,7 @@ public final class WarfareApp {
         SwingUtilities.invokeAndWait(() -> {
             GameUi ui = GameUi.current;
             layoutAll(ui);
+            ui.map.flushLayers();
             img[0] = new BufferedImage(1500, 900, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = img[0].createGraphics();
             ui.paint(g);

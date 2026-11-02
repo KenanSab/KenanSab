@@ -44,12 +44,12 @@ intelligence shows. A tutorial walks through the first minutes (Help > Restart t
 ## Develop
 
 ```bash
-./gradlew :core:test                                  # simulation tests (29)
-xvfb-run -a ./gradlew :desktop:test                   # audio + real-window UI tests (needs a display or xvfb)
+./gradlew :core:test                                  # simulation tests (30)
+xvfb-run -a ./gradlew :desktop:test                   # audio, map audit, real-window UI tests and a random-input fuzz test (needs a display or xvfb)
 ./gradlew :desktop:installDist                        # runnable distribution in desktop/build/install/warfare
 ./gradlew :desktop:packageApp                         # native app image with bundled runtime (run on the target OS)
 ./gradlew :tools:run --args="admin0.geojson admin1.geojson assets/map 900 420 260 places.geojson"   # regenerate the map
 ```
 
 Handy flags: `--nation TAG` skips the picker, `--smoke [seconds]` plays the real window unattended and prints
-timings, `--shot out.png TAG DAYS FOE MODE TAB` renders a headless screenshot, `--export-audio dir` writes the score as WAV.
+timings, `--shot out.png TAG DAYS FOE MODE TAB` renders a headless screenshot, `--export-audio dir` writes the score as WAV, `--basemap out.png` re-bakes the terrain, relief and sea underlay into `assets/map` (only needed after changing `Basemap.java`).

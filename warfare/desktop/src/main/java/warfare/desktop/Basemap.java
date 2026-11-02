@@ -3,35 +3,84 @@ package warfare.desktop;
 import warfare.core.Terrain;
 import warfare.core.WorldData;
 
+import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.nio.file.Path;
+import java.util.stream.IntStream;
 
 /**
- * Procedural satellite-style underlay: smoothly blended terrain colours, noise-driven hillshading and a coastal
- * depth gradient in the ocean. Built once from the vector province shapes (no downloaded imagery needed).
+ * Procedural satellite-style underlay, split into three images so the renderer can light the map properly:
+ * <ul>
+ *   <li>{@link #image}: unlit terrain colours on land, depth-graded ocean with shelf contours and coastal foam;</li>
+ *   <li>{@link #relief}: sun lighting (black shadow / white light with alpha) drawn <em>over</em> the political colours so mountains stay three-dimensional in every map mode;</li>
+ *   <li>{@link #seaMask}: coverage of open water (reduced resolution) used to confine the animated waves;</li>
+ *   <li>{@link #shoreA}, {@link #shoreB}: two bands of surf at different distances from the coast, pulsed in antiphase.</li>
+ * </ul>
+ * The result is baked to PNG (assets/map/basemap.png etc.) by {@code --basemap}; at runtime it is only loaded.
  */
 final class Basemap {
     static final double PX_PER_UNIT = 1.5;
-    final BufferedImage image;
-    /** White everywhere that is sea, transparent on land; the animated wave layer is masked with it. */
-    BufferedImage seaMask;
+    static final double MASK_PX_PER_UNIT = 0.75;
+    final BufferedImage image, relief, seaMask, shoreA, shoreB;
 
     private static final int[] TERRAIN = {
-            0x9AA866,   // plains
-            0x4A6B44,   // forest
-            0x867A68,   // mountain
-            0xCDB67C,   // desert
-            0x2D5C38,   // jungle
-            0xDDE3EA,   // arctic
+            0x7F8D4A,   // plains
+            0x3B5B36,   // forest
+            0x80735F,   // mountain
+            0xCDB078,   // desert
+            0x25552F,   // jungle
+            0xE4EBF1,   // arctic
             0x000000};
+    /** How rugged each terrain class is: scales the ridged height noise that feeds the hillshade. */
+    private static final double[] RUGGED = {0.16, 0.30, 1.0, 0.34, 0.30, 0.42, 0};
 
-    Basemap(MapShapes shapes, WorldData w) {
-        int W = (int) Math.round(w.width * PX_PER_UNIT), H = (int) Math.round(w.height * PX_PER_UNIT);
-        float[] mask = new float[W * H];
+    static boolean baked(Path dir) {
+        if (dir == null) return false;
+        for (String f : new String[]{"basemap", "relief", "seamask", "shore1", "shore2"}) if (!dir.resolve(f + ".png").toFile().exists()) return false;
+        return true;
+    }
+
+    /** Loads the baked underlay when present, otherwise computes it (several seconds). */
+    Basemap(MapShapes shapes, WorldData w, Path dir) {
+        BufferedImage[] out = new BufferedImage[5];
+        if (baked(dir) && !Boolean.getBoolean("warfare.rebake")) {
+            try {
+                out[0] = convert(ImageIO.read(dir.resolve("basemap.png").toFile()), BufferedImage.TYPE_INT_RGB);
+                out[1] = convert(ImageIO.read(dir.resolve("relief.png").toFile()), BufferedImage.TYPE_INT_ARGB);
+                out[2] = convert(ImageIO.read(dir.resolve("seamask.png").toFile()), BufferedImage.TYPE_INT_ARGB);
+                out[3] = convert(ImageIO.read(dir.resolve("shore1.png").toFile()), BufferedImage.TYPE_INT_ARGB);
+                out[4] = convert(ImageIO.read(dir.resolve("shore2.png").toFile()), BufferedImage.TYPE_INT_ARGB);
+            } catch (Exception e) { out[0] = null; }
+        }
+        if (out[0] == null) out = build(shapes, w);
+        image = out[0]; relief = out[1]; seaMask = out[2]; shoreA = out[3]; shoreB = out[4];
+    }
+
+    void bake(Path dir) throws Exception {
+        ImageIO.write(image, "png", dir.resolve("basemap.png").toFile());
+        ImageIO.write(relief, "png", dir.resolve("relief.png").toFile());
+        ImageIO.write(seaMask, "png", dir.resolve("seamask.png").toFile());
+        ImageIO.write(shoreA, "png", dir.resolve("shore1.png").toFile());
+        ImageIO.write(shoreB, "png", dir.resolve("shore2.png").toFile());
+    }
+
+    private static BufferedImage convert(BufferedImage src, int type) {
+        if (src.getType() == type) return src;
+        BufferedImage dst = new BufferedImage(src.getWidth(), src.getHeight(), type);
+        Graphics2D g = dst.createGraphics();
+        g.drawImage(src, 0, 0, null);
+        g.dispose();
+        return dst;
+    }
+
+    private static BufferedImage[] build(MapShapes shapes, WorldData w) {
+        final int W = (int) Math.round(w.width * PX_PER_UNIT), H = (int) Math.round(w.height * PX_PER_UNIT);
+        final float[] mask = new float[W * H];
         float[][] rgb = new float[3][W * H];
-        float[] mtn = new float[W * H];
+        float[] rugged = new float[W * H], mtn = new float[W * H];
 
         paint(shapes, w, W, H, null, mask);
         for (int t = 0; t < 6; t++) {
@@ -39,64 +88,119 @@ final class Basemap {
             float[] layer = new float[W * H];
             paint(shapes, w, W, H, t, layer);
             for (int i = 0; i < layer.length; i++) {
-                rgb[0][i] += layer[i] * ((rgbv >> 16) & 255);
-                rgb[1][i] += layer[i] * ((rgbv >> 8) & 255);
-                rgb[2][i] += layer[i] * (rgbv & 255);
-                if (t == Terrain.MOUNTAIN.ordinal()) mtn[i] = layer[i];
+                float l = layer[i];
+                if (l == 0) continue;
+                rgb[0][i] += l * ((rgbv >> 16) & 255);
+                rgb[1][i] += l * ((rgbv >> 8) & 255);
+                rgb[2][i] += l * (rgbv & 255);
+                rugged[i] += (float) (l * RUGGED[t]);
+                if (t == Terrain.MOUNTAIN.ordinal()) mtn[i] = l;
             }
         }
         // normalised blur: colours bleed smoothly into each other across province lines but never out into the sea
         float[] bm = box(mask, W, H, 7, 3);
-        float[][] soft = new float[3][];
+        final float[][] soft = new float[3][];
         for (int c = 0; c < 3; c++) {
             float[] b = box(rgb[c], W, H, 7, 3);
             for (int i = 0; i < b.length; i++) b[i] = bm[i] > 0.001f ? b[i] / bm[i] : 0;
             soft[c] = b;
         }
-        float[] mtnSoft = box(mtn, W, H, 9, 2);
-        float[] coast = box(mask, W, H, 20, 3);
-        float[] shelf = box(mask, W, H, 60, 2);
+        rgb = null;
+        final float[] ruggedSoft = box(rugged, W, H, 9, 2);
+        final float[] mtnSoft = box(mtn, W, H, 9, 2);
+        final float[] coast = box(mask, W, H, 20, 3);
+        final float[] shelf = box(mask, W, H, 60, 2);
 
-        float[] height = new float[W * H];
-        for (int y = 0; y < H; y++)
+        // ---- height field: rolling continents + ridge systems scaled by how rugged the terrain class is
+        final float[] height = new float[W * H];
+        IntStream.range(0, H).parallel().forEach(y -> {
             for (int x = 0; x < W; x++) {
                 int i = y * W + x;
-                double n = fbm(x / 58.0, y / 58.0, 5);
-                double ridge = 1 - Math.abs(2 * fbm(x / 34.0 + 40, y / 34.0 + 40, 4) - 1);
-                height[i] = (float) (0.45 * n + mtnSoft[i] * (0.55 + 0.9 * ridge));
+                double rolling = fbm(x / 80.0, y / 80.0, 5);
+                double ridgeA = 1 - Math.abs(2 * fbm(x / 36.0 + 40, y / 36.0 + 40, 4) - 1);
+                double ridgeB = 1 - Math.abs(2 * fbm(x / 13.0 + 7, y / 13.0 + 91, 3) - 1);
+                double r = ruggedSoft[i];
+                height[i] = (float) (0.55 * rolling + r * (0.62 * ridgeA * ridgeA + 0.30 * ridgeB * ridgeB * (0.4 + 0.6 * ridgeA)) + 0.22 * mtnSoft[i]);
             }
+        });
 
-        image = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB);
-        int[] out = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
-        for (int y = 0; y < H; y++)
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        BufferedImage rel = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB);
+        final int[] out = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        final int[] ro = ((DataBufferInt) rel.getRaster().getDataBuffer()).getData();
+        IntStream.range(0, H).parallel().forEach(y -> {
             for (int x = 0; x < W; x++) {
                 int i = y * W + x;
-                float dx = height[y * W + Math.min(W - 1, x + 1)] - height[y * W + Math.max(0, x - 1)];
-                float dy = height[Math.min(H - 1, y + 1) * W + x] - height[Math.max(0, y - 1) * W + x];
-                double shade = Math.max(-0.14, Math.min(0.14, (-dx - dy) * 2.2));
-                double fine = 0.97 + 0.06 * fbm(x / 7.0 + 90, y / 7.0 + 12, 2);
-                double f = (1 + shade) * fine;
-                double lr = (soft[0][i] * 0.45 + 126 * 0.55) * f, lg = (soft[1][i] * 0.45 + 116 * 0.55) * f, lb = (soft[2][i] * 0.45 + 98 * 0.55) * f;
-                // ocean: deeper away from land, with a bright shelf close to the coast
-                double depth = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);
-                double ripple = 0.95 + 0.1 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
-                double ridgeW = 0.5 + 0.5 * Math.sin(depth * 26 + 4 * fbm(x / 90.0 + 11, y / 90.0 + 5, 3));
-                double caustic = Math.pow(fbm(x / 11.0 + 300, y / 11.0 + 80, 3), 3) * 1.6;
-                double deep = 1 - depth;
-                double or = (14 + 50 * depth) * ripple + 6 * ridgeW * depth + 14 * caustic * depth;
-                double og = (44 + 74 * depth) * ripple + 8 * ridgeW * depth + 18 * caustic * depth;
-                double ob = (74 + 80 * depth) * ripple + 10 * ridgeW * depth + 20 * caustic * depth;
-                double cm = coast[i];
-                double foam = Math.exp(-Math.pow((cm - 0.30) / 0.045, 2)) * 0.34 + Math.exp(-Math.pow((cm - 0.17) / 0.03, 2)) * 0.2;
-                foam *= 0.75 + 0.5 * fbm(x / 9.0 + 500, y / 9.0, 2);
-                or += (225 - or) * foam; og += (240 - og) * foam; ob += (244 - ob) * foam;
                 double m = Math.min(1, Math.max(0, mask[i]));
-                int r = clamp(or * (1 - m) + lr * m), g = clamp(og * (1 - m) + lg * m), b = clamp(ob * (1 - m) + lb * m);
-                out[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                // ---------------- land colour (unlit)
+                double lr = 0, lg = 0, lb = 0, shade = 0;
+                if (m > 0.002) {
+                    float hxm = height[y * W + Math.max(0, x - 1)], hxp = height[y * W + Math.min(W - 1, x + 1)];
+                    float hym = height[Math.max(0, y - 1) * W + x], hyp = height[Math.min(H - 1, y + 1) * W + x];
+                    double dx = hxp - hxm, dy = hyp - hym;
+                    shade = Math.max(-1, Math.min(1, (-dx * 0.78 - dy * 0.62) * 11.0));
+                    double patch = fbm(x / 17.0 + 7, y / 17.0 + 3, 3), region = fbm(x / 61.0 + 91, y / 61.0 + 17, 3);
+                    double v = 0.86 + 0.28 * patch;
+                    lr = soft[0][i] * v * (0.95 + 0.10 * region);
+                    lg = soft[1][i] * v;
+                    lb = soft[2][i] * v * (1.05 - 0.10 * region);
+                    // snow on the highest ridges
+                    double snow = smooth(0.80, 1.05, height[i] - 0.10 * (1 - mtnSoft[i])) * mtnSoft[i];
+                    lr += (236 - lr) * snow; lg += (240 - lg) * snow; lb += (246 - lb) * snow;
+                }
+                // ---------------- ocean: open water varies slowly, shelves turn turquoise toward the coast
+                double near = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);   // 1 at the coast, 0 in open ocean
+                double macro = fbm(x / 240.0 + 13, y / 240.0 + 71, 4) - 0.5, streak = fbm(x / 110.0 + 5, y / 38.0 + 9, 3) - 0.5;
+                double ripple = 0.96 + 0.08 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
+                double contour = 0.5 + 0.5 * Math.sin(near * 26 + 4 * fbm(x / 90.0 + 11, y / 90.0 + 5, 3));
+                double caustic = Math.pow(fbm(x / 11.0 + 300, y / 11.0 + 80, 3), 3) * 1.6;
+                double or = 8 + 7 * macro + 5 * streak, og = 34 + 26 * macro + 12 * streak, ob = 64 + 30 * macro + 14 * streak;
+                double tq = Math.pow(near, 1.35) * 0.78;
+                or += (46 - or) * tq; og += (136 - og) * tq; ob += (156 - ob) * tq;
+                or = or * ripple + 3 * contour * near + 12 * caustic * near;
+                og = og * ripple + 4 * contour * near + 16 * caustic * near;
+                ob = ob * ripple + 5 * contour * near + 18 * caustic * near;
+                double cm = coast[i];
+                double foam = Math.exp(-Math.pow((cm - 0.27) / 0.11, 2)) * 0.14 + Math.exp(-Math.pow((cm - 0.08) / 0.05, 2)) * 0.16;
+                foam *= 0.6 + 0.8 * fbm(x / 9.0 + 500, y / 9.0, 2);
+                or += (225 - or) * foam; og += (240 - og) * foam; ob += (244 - ob) * foam;
+                out[i] = 0xFF000000 | (clamp(or * (1 - m) + lr * m) << 16) | (clamp(og * (1 - m) + lg * m) << 8) | clamp(ob * (1 - m) + lb * m);
+                // ---------------- relief overlay
+                if (m > 0.002 && Math.abs(shade) > 0.01) {
+                    int a = (int) (Math.min(1, Math.abs(shade)) * (shade > 0 ? 0.40 : 0.52) * m * 255);
+                    ro[i] = shade > 0 ? (a << 24) | 0xFFF6E4 : (a << 24) | 0x120C06;
+                }
             }
-        seaMask = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB);
-        int[] sm = ((DataBufferInt) seaMask.getRaster().getDataBuffer()).getData();
-        for (int i = 0; i < sm.length; i++) sm[i] = ((int) (255 * Math.max(0, Math.min(1, 1 - mask[i] * 1.15))) << 24) | 0xFFFFFF;
+        });
+
+        // sea mask at reduced resolution
+        int mw = (int) Math.round(w.width * MASK_PX_PER_UNIT), mh = (int) Math.round(w.height * MASK_PX_PER_UNIT);
+        BufferedImage sm = new BufferedImage(mw, mh, BufferedImage.TYPE_INT_ARGB);
+        int[] so = ((DataBufferInt) sm.getRaster().getDataBuffer()).getData();
+        for (int y = 0; y < mh; y++)
+            for (int x = 0; x < mw; x++) {
+                int sx = Math.min(W - 1, x * 2), sy = Math.min(H - 1, y * 2);
+                int sx1 = Math.min(W - 1, sx + 1), sy1 = Math.min(H - 1, sy + 1);
+                double cov = (mask[sy * W + sx] + mask[sy * W + sx1] + mask[sy1 * W + sx] + mask[sy1 * W + sx1]) / 4.0;
+                so[y * mw + x] = ((int) (255 * Math.max(0, Math.min(1, 1 - cov * 1.15))) << 24) | 0xFFFFFF;
+            }
+        BufferedImage sa = new BufferedImage(mw, mh, BufferedImage.TYPE_INT_ARGB), sb = new BufferedImage(mw, mh, BufferedImage.TYPE_INT_ARGB);
+        int[] ao = ((DataBufferInt) sa.getRaster().getDataBuffer()).getData(), bo = ((DataBufferInt) sb.getRaster().getDataBuffer()).getData();
+        for (int y = 0; y < mh; y++)
+            for (int x = 0; x < mw; x++) {
+                int sx = Math.min(W - 1, x * 2), sy = Math.min(H - 1, y * 2);
+                double c = coast[sy * W + sx], land = Math.min(1, mask[sy * W + sx] * 1.3);
+                double n = 0.55 + 0.9 * fbm(x / 6.0 + 40, y / 6.0 + 9, 2);
+                double va = Math.exp(-Math.pow((c - 0.40) / 0.06, 2)) * (1 - land) * n, vb = Math.exp(-Math.pow((c - 0.25) / 0.075, 2)) * (1 - land) * n;
+                ao[y * mw + x] = ((int) Math.max(0, Math.min(255, va * 235)) << 24) | 0xFFFFFF;
+                bo[y * mw + x] = ((int) Math.max(0, Math.min(255, vb * 200)) << 24) | 0xFFFFFF;
+            }
+        return new BufferedImage[]{img, rel, sm, sa, sb};
+    }
+
+    private static double smooth(double a, double b, double v) {
+        double t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+        return t * t * (3 - 2 * t);
     }
 
     private static int clamp(double v) { return (int) Math.max(0, Math.min(255, v)); }

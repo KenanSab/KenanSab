@@ -106,9 +106,16 @@ final class Hud {
             g.setStroke(new BasicStroke(1.2f));
             g.draw(new Ellipse2D.Float(x - 1, y - 1, d + 2, d + 2));
             // text
-            g.setFont(Fonts.title(32f));
+            String nm = gs.nationName(gs.player).toUpperCase();
+            float fs = 32f;
+            Font nf = Fonts.title(fs);
+            int room = getWidth() - 78 - 18;
+            while (fs > 18f && g.getFontMetrics(nf).stringWidth(nm) > room) { fs -= 1f; nf = Fonts.title(fs); }
+            g.setFont(nf);
+            g.setColor(new Color(0, 0, 0, 120));
+            g.drawString(nm, 79, 45);
             g.setColor(Color.WHITE);
-            g.drawString(gs.nationName(gs.player).toUpperCase(), 78, 44);
+            g.drawString(nm, 78, 44);
             g.setFont(Fonts.ui(13f));
             g.setColor(Ui.MUTED);
             g.drawString(dateText, 80, 62);

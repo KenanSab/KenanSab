@@ -33,6 +33,8 @@ final class MapPanel extends JPanel {
     final WorldData w;
     final MapShapes shapes;
     final Basemap basemap;
+    final MapExtras extras;
+    private final MapLayers layers;
     Mode mode = Mode.POLITICAL;
     int selProv = -1, selArmy = -1, hoverProv = -1;
     Runnable onSelect = () -> {};
@@ -51,10 +53,21 @@ final class MapPanel extends JPanel {
 
     private final int[] fillArgb;
     private final byte[] arcClass;          // 0 none, 1 coast, 2 national, 3 province, 4 sea zone
-    private final List<Label> labels = new ArrayList<>();
     private double targetZoom = -1, velX, velY;
     private Point anchor = new Point(0, 0);
     private final javax.swing.Timer animTimer = new javax.swing.Timer(16, e -> animate());
+
+    // ---- cached layers: rendered on a worker thread, patched in place when the fog changes
+    private volatile MapLayers.Result cur;
+    private boolean rendering, wantRender;
+    private long epoch;
+    private static final java.util.concurrent.ExecutorService worker = java.util.concurrent.Executors.newSingleThreadExecutor(rn -> {
+        Thread t = new Thread(rn, "map-layers"); t.setDaemon(true); t.setPriority(Thread.NORM_PRIORITY - 1); return t;
+    });
+    private final boolean[] markedFill, markedArc;
+    private final List<Integer> pendFill = new ArrayList<>(), pendArc = new ArrayList<>();
+    long renderNs, renders, paintNs, paints;
+    final long[] seg = new long[8];   // profiling: base blit, fx, highlights, province names, cities, armies/paths, controls
 
     @Override public void addNotify() { super.addNotify(); animTimer.start(); }
     @Override public void removeNotify() { animTimer.stop(); super.removeNotify(); }
@@ -62,26 +75,32 @@ final class MapPanel extends JPanel {
     /** Eases wheel zoom toward its target, coasts after a drag, and keeps the sea moving. */
     private void animate() {
         if (!isShowing()) return;
-        boolean moved = false;
+        boolean moving = false;
         if (targetZoom > 0) {
-            double nz = zoom + (targetZoom - zoom) * 0.32;
-            if (Math.abs(nz - targetZoom) < targetZoom * 0.004) { nz = targetZoom; targetZoom = -1; }
+            double nz = zoom + (targetZoom - zoom) * 0.30;
+            if (Math.abs(nz - targetZoom) < targetZoom * 0.003) { nz = targetZoom; targetZoom = -1; }
             ox = anchor.x - (anchor.x - ox) * nz / zoom;
             oy = anchor.y - (anchor.y - oy) * nz / zoom;
-            zoom = nz; moved = true;
+            zoom = nz; moving = true;
         }
         if (dragFrom == null && (Math.abs(velX) > 0.4 || Math.abs(velY) > 0.4)) {
-            ox += velX; oy += velY; velX *= 0.90; velY *= 0.90; moved = true;
+            ox += velX; oy += velY; velX *= 0.90; velY *= 0.90; moving = true;
         }
-        if (moved) viewDirty = true;
+        if (moving) clampView();
+        int delay = moving ? 16 : 40;
+        if (animTimer.getDelay() != delay) animTimer.setDelay(delay);
         repaint();
     }
 
-    private BufferedImage baseImg, fillImg, borderImg, waveMask, waveBuf;
-    private long waveStamp; private boolean waveMaskDirty = true;
-    private double layerOx, layerOy, layerZoom;
-    private boolean viewDirty = true, fillDirty = true, borderDirty = true;
-    long renderNs, renders;
+    /** Keeps the world on screen: at most a quarter of the viewport may show empty space beyond the map edge. */
+    private void clampView() {
+        int W = getWidth(), H = getHeight();
+        if (W < 2 || H < 2) return;
+        double mw = w.width * zoom, mh = w.height * zoom;
+        if (mw <= W * 0.5) ox = (W - mw) / 2; else ox = Math.max(W * 0.75 - mw, Math.min(W * 0.25, ox));
+        if (mh <= H * 0.5) oy = (H - mh) / 2; else oy = Math.max(H * 0.75 - mh, Math.min(H * 0.25, oy));
+    }
+
     private double zoom = 1, ox, oy;
     private boolean fitted;
     private Point dragFrom;
@@ -110,11 +129,10 @@ final class MapPanel extends JPanel {
             int w = 330, h = 62, x = getWidth() - w - 14;
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
-            g.setColor(new Color(24, 19, 14, 235));
-            g.fillRoundRect(x, y, w, h, 16, 16);
-            g.setColor(new Color(236, 192, 92, 200));
-            g.setStroke(new BasicStroke(1.6f));
-            g.drawRoundRect(x, y, w, h, 16, 16);
+            g.setColor(new Color(0, 0, 0, 110));
+            g.fill(new RoundRectangle2D.Float(x + 2, y + 4, w, h, 8, 8));
+            Tex.plate(g, new RoundRectangle2D.Float(x, y, w, h, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
+            Tex.frame(g, x + 0.5f, y + 0.5f, w - 1, h - 1, 8, true, true);
             g.drawImage(Assets.icon(t.icon, 36, new Color(236, 192, 92)), x + 12, y + 13, null);
             g.setFont(Fonts.label(12.5f));
             g.setColor(new Color(236, 192, 92));
@@ -132,12 +150,16 @@ final class MapPanel extends JPanel {
 
     MapPanel(GameState gs, Path mapDir) {
         this.gs = gs; this.w = gs.world;
-        setBackground(new Color(35, 27, 21));
+        setBackground(MapLayers.BACKGROUND);
+        NationColors.init(gs.world);
         shapes = WarfareApp.shapes(w);
         basemap = WarfareApp.basemap(w);
+        extras = WarfareApp.extras(w);
+        layers = WarfareApp.layers(w);
         fillArgb = new int[w.provinces.size()];
         arcClass = new byte[shapes.p1.length];
-        buildLabels();
+        markedFill = new boolean[fillArgb.length];
+        markedArc = new boolean[arcClass.length];
         MouseAdapter ma = new MouseAdapter() {
             @Override public void mousePressed(MouseEvent e) { dragFrom = e.getPoint(); dragged = false; velX = velY = 0; }
             @Override public void mouseDragged(MouseEvent e) {
@@ -145,10 +167,10 @@ final class MapPanel extends JPanel {
                 mouse = e.getPoint();
                 int dx = e.getX() - dragFrom.x, dy = e.getY() - dragFrom.y;
                 if (Math.abs(dx) + Math.abs(dy) > 3) dragged = true;
-                if (dragged) { ox += dx; oy += dy; velX = dx * 0.6 + velX * 0.4; velY = dy * 0.6 + velY * 0.4; dragFrom = e.getPoint(); repaint(); }
+                if (dragged) { ox += dx; oy += dy; clampView(); velX = dx * 0.6 + velX * 0.4; velY = dy * 0.6 + velY * 0.4; dragFrom = e.getPoint(); repaint(); }
             }
             @Override public void mouseReleased(MouseEvent e) {
-                if (!dragged) click(e); else { viewDirty = true; repaint(); }
+                if (!dragged) click(e); else repaint();
                 if (dragged && Math.abs(velX) + Math.abs(velY) < 2) velX = velY = 0;
                 dragFrom = null;
             }
@@ -174,61 +196,37 @@ final class MapPanel extends JPanel {
 
     void centerOn(int province, double z) {
         WorldData.ProvinceInfo p = w.provinces.get(province);
-        zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; viewDirty = true; repaint();
+        targetZoom = -1; velX = velY = 0;
+        zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; clampView(); repaint();
     }
 
-    void viewChanged() { viewDirty = true; repaint(); }
+    void viewChanged() { repaint(); }
 
-    void pan(double dx, double dy) { ox += dx; oy += dy; viewDirty = true; repaint(); }
+    void pan(double dx, double dy) { ox += dx; oy += dy; clampView(); repaint(); }
 
     void zoomBy(double f) {
-        double nz = Math.max(0.4, Math.min(16, zoom * f)), cx = getWidth() / 2.0, cy = getHeight() / 2.0;
-        ox = cx - (cx - ox) * nz / zoom; oy = cy - (cy - oy) * nz / zoom;
-        zoom = nz; viewDirty = true; repaint();
+        anchor = new Point(getWidth() / 2, getHeight() / 2);
+        targetZoom = Math.max(0.4, Math.min(16, (targetZoom > 0 ? targetZoom : zoom) * f));
+        velX = velY = 0;
     }
 
-    void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); fillFull = true; fillDirty = true; refreshColors(); repaint(); }
-
-    // ------------------------------------------------------------------ labels
-    /** One label per nation, placed over its largest contiguous landmass. */
-    private void buildLabels() {
-        for (WorldData.NationInfo n : w.nations) {
-            java.util.Set<Integer> mine = new java.util.HashSet<>(n.provinces);
-            java.util.Set<Integer> seen = new java.util.HashSet<>();
-            double bestPx = -1; List<Integer> best = null;
-            for (int start : n.provinces) {
-                if (seen.contains(start)) continue;
-                List<Integer> comp = new ArrayList<>();
-                java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
-                q.add(start); seen.add(start);
-                double px = 0;
-                while (!q.isEmpty()) {
-                    int p = q.poll(); comp.add(p); px += w.provinces.get(p).pixels;
-                    for (int nb : w.provinces.get(p).neighbours) if (mine.contains(nb) && seen.add(nb)) q.add(nb);
-                }
-                if (px > bestPx) { bestPx = px; best = comp; }
-            }
-            if (best == null) continue;
-            double sx = 0, sy = 0, tot = 0, x0 = 1e9, x1 = -1e9;
-            for (int p : best) {
-                WorldData.ProvinceInfo pi = w.provinces.get(p);
-                sx += pi.cx * pi.pixels; sy += pi.cy * pi.pixels; tot += pi.pixels;
-                x0 = Math.min(x0, shapes.bounds[p].x); x1 = Math.max(x1, shapes.bounds[p].x + shapes.bounds[p].width);
-            }
-            labels.add(new Label(n.name.toUpperCase(), sx / tot, sy / tot, x1 - x0));
-        }
-    }
+    void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); refreshColors(); repaint(); }
 
     // ------------------------------------------------------------------ colours (fog of war lives here)
-    private final List<Integer> chFill = new ArrayList<>(), chArc = new ArrayList<>();
-    private boolean fillFull = true, borderFull = true;
+    private void markFill(int p) { if (!markedFill[p]) { markedFill[p] = true; pendFill.add(p); } }
+    private void markArc(int a) { if (!markedArc[a]) { markedArc[a] = true; pendArc.add(a); } }
+    private void clearPending() {
+        for (int p : pendFill) markedFill[p] = false;
+        for (int a : pendArc) markedArc[a] = false;
+        pendFill.clear(); pendArc.clear();
+    }
 
     void refreshColors() {
         Intel in = gs.intelOf(gs.player);
         int me = gs.player;
         for (int p = 0; p < fillArgb.length; p++) {
             int c = colorOf(p, in, me);
-            if (c != fillArgb[p]) { fillArgb[p] = c; if (!fillFull) { if (chFill.size() > 120) fillFull = true; else chFill.add(p); } fillDirty = true; }
+            if (c != fillArgb[p]) { fillArgb[p] = c; markFill(p); }
         }
         for (int a = 0; a < arcClass.length; a++) {
             int p1 = shapes.p1[a], p2 = shapes.p2[a];
@@ -240,10 +238,86 @@ final class MapPanel extends JPanel {
                 else if (s1 != s2) cls = 1;
                 else cls = (byte) (in.knownOwner[p1] != in.knownOwner[p2] ? 2 : 3);
             }
-            if (cls != arcClass[a]) { arcClass[a] = cls; if (!borderFull) { if (chArc.size() > 60) borderFull = true; else chArc.add(a); } borderDirty = true; }
+            if (cls != arcClass[a]) { arcClass[a] = cls; markArc(a); }
         }
-        if (fillDirty || borderDirty) repaint();
+        applyPending();
     }
+
+    /** Patches the cached layers in place for small changes; hands big ones (mode switch, big conquests) to the worker. */
+    private void applyPending() {
+        if (pendFill.isEmpty() && pendArc.isEmpty()) return;
+        MapLayers.Result r = cur;
+        if (r == null || rendering) return;                 // the next adopted render diffs against its snapshot
+        if (pendFill.size() > 140 || pendArc.size() > 90) { clearPending(); requestRender(); return; }
+        Rectangle dirty = null;
+        if (!pendFill.isEmpty()) dirty = union(dirty, layers.updateFill(r, fillArgb, pendFill));
+        if (!pendArc.isEmpty()) dirty = union(dirty, layers.updateLines(r, arcClass, pendArc));
+        clearPending();
+        if (dirty != null) layers.composite(r, dirty);
+        repaint();
+    }
+
+    private static Rectangle union(Rectangle a, Rectangle b) { return a == null ? b : b == null ? a : a.union(b); }
+
+    private MapLayers.Params snapshot() {
+        return new MapLayers.Params(zoom, ox, oy, getWidth(), getHeight(), fillArgb.clone(), arcClass.clone());
+    }
+
+    /** Starts a background render for the current view (at most one in flight). */
+    private void requestRender() {
+        if (getWidth() < 2 || getHeight() < 2) return;
+        if (rendering) { wantRender = true; return; }
+        rendering = true; wantRender = false;
+        final long ep = epoch;
+        final MapLayers.Params p = snapshot();
+        worker.submit(() -> {
+            MapLayers.Result res = null; Throwable err = null;
+            long t0 = System.nanoTime();
+            try { res = layers.render(p); } catch (Throwable t) { err = t; }
+            final MapLayers.Result done = res; final Throwable failed = err; final long took = System.nanoTime() - t0;
+            SwingUtilities.invokeLater(() -> {
+                rendering = false;
+                if (failed != null) throw new RuntimeException("map layer render failed", failed);
+                renderNs += took; renders++;
+                if (ep == epoch) adopt(done);
+                if (wantRender || layersStale()) requestRender();
+            });
+        });
+    }
+
+    /** Synchronous render on the calling thread: first frame, screenshots and tests. */
+    void renderNow() {
+        if (getWidth() < 2 || getHeight() < 2) return;
+        epoch++;
+        long t0 = System.nanoTime();
+        adopt(layers.render(snapshot()));
+        renderNs += System.nanoTime() - t0; renders++;
+    }
+
+    private void adopt(MapLayers.Result r) {
+        cur = r;
+        clearPending();
+        for (int p = 0; p < fillArgb.length; p++) if (r.fillSnap[p] != fillArgb[p]) markFill(p);
+        for (int a = 0; a < arcClass.length; a++) if (r.arcSnap[a] != arcClass[a]) markArc(a);
+        applyPending();
+        repaint();
+    }
+
+    /** True when the cached layers no longer cover the view well enough: another zoom level, resized, or panned near the margin. */
+    private boolean layersStale() {
+        MapLayers.Result r = cur;
+        int W = getWidth(), H = getHeight();
+        if (r == null) return W > 1 && H > 1;
+        if (r.vw != W || r.vh != H) return true;
+        double s = zoom / r.zoom;
+        if (Math.abs(s - 1) > 0.025) return true;
+        double tx = ox - s * (MapLayers.MARGIN + r.ox), ty = oy - s * (MapLayers.MARGIN + r.oy);
+        double slack = Math.min(Math.min(-tx / s, r.iw - (W - tx) / s), Math.min(-ty / s, r.ih - (H - ty) / s));
+        return slack < MapLayers.MARGIN * 0.4;
+    }
+
+    /** Blocks until the cached layers match the current view exactly (screenshots, tests). */
+    void flushLayers() { renderNow(); }
 
     private static int argb(int rgb, double alpha) { return ((int) Math.max(0, Math.min(255, alpha * 255)) << 24) | (rgb & 0xFFFFFF); }
 
@@ -280,7 +354,7 @@ final class MapPanel extends JPanel {
                 if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.34 * stale);
                 int ko = in.knownOwner[p];
                 if (ko < 0) return argb(0x8C8E88, 0.85);
-                int base = NationColors.scale(NationColors.rgb(NationColors.of(w.nations.get(ko).tag)), 0.74);
+                int base = NationColors.fill(NationColors.of(w.nations.get(ko).tag));
                 if (q > 0 || ko == me) return argb(base, 0.93);
                 return argb(NationColors.mix(NationColors.scale(base, 0.92), 0x8A8A84, 0.6 * stale), 0.90 - 0.1 * stale);
             }
@@ -288,220 +362,211 @@ final class MapPanel extends JPanel {
     }
 
     // ------------------------------------------------------------------ painting
-    private BufferedImage fresh(BufferedImage old, int type) {
-        int W = Math.max(1, getWidth()), H = Math.max(1, getHeight());
-        return old != null && old.getWidth() == W && old.getHeight() == H ? old : new BufferedImage(W, H, type);
-    }
+    private static final BufferedImage[] swell = new BufferedImage[2];
+    private static BufferedImage cloudTile;
 
-    private Graphics2D hq(BufferedImage img) {
-        Graphics2D g = img.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-        return g;
-    }
-
-    private Rectangle screenRect(Rectangle2D.Float b, int pad) {
-        int x0 = (int) Math.floor(b.x * zoom + ox) - pad, y0 = (int) Math.floor(b.y * zoom + oy) - pad;
-        int x1 = (int) Math.ceil((b.x + b.width) * zoom + ox) + pad, y1 = (int) Math.ceil((b.y + b.height) * zoom + oy) + pad;
-        return new Rectangle(x0, y0, x1 - x0, y1 - y0);
-    }
-
-    private Rectangle2D worldRect(Rectangle r) {
-        return new Rectangle2D.Double((r.x - ox) / zoom, (r.y - oy) / zoom, r.width / zoom, r.height / zoom);
-    }
-
-    private void fillProvince(Graphics2D g, int p) {
-        g.setColor(new Color(fillArgb[p], true));
-        g.fill(shapes.fill[p]);
-    }
-
-    private void drawArcPasses(Graphics2D g, Rectangle2D worldView) {
-        if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 40), 0.7);
-        if (zoom >= 0.9) strokeArcs(g, worldView, 3, new Color(255, 255, 255, 110), 0.8);
-        strokeArcs(g, worldView, 1, new Color(90, 70, 50, 120), 1.2);
-        strokeArcs(g, worldView, 2, new Color(52, 38, 26, 235), 1.5);
-    }
-
-    private void renderLayers() {
-        long t0 = System.nanoTime();
-        int W = Math.max(1, getWidth()), H = Math.max(1, getHeight());
-        boolean resized = baseImg == null || baseImg.getWidth() != W || baseImg.getHeight() != H;
-        boolean view = viewDirty || resized || layerZoom != zoom;
-        Rectangle screen = new Rectangle(0, 0, W, H);
-        Rectangle2D worldView = new Rectangle2D.Double(-ox / zoom - 2, -oy / zoom - 2, W / zoom + 4, H / zoom + 4);
-        if (view) {
-            baseImg = fresh(baseImg, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g = hq(baseImg);
-            g.setColor(getBackground());
-            g.fillRect(0, 0, W, H);
-            AffineTransform at = new AffineTransform();
-            at.translate(ox, oy);
-            at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
-            g.drawImage(basemap.image, at, null);
-            g.dispose();
-            waveMaskDirty = true;
-        }
-        if (view || fillFull) {
-            fillImg = fresh(fillImg, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = hq(fillImg);
-            g.setComposite(AlphaComposite.Clear);
-            g.fillRect(0, 0, W, H);
-            g.setComposite(AlphaComposite.SrcOver);
-            g.translate(ox, oy);
-            g.scale(zoom, zoom);
-            for (int p = 0; p < fillArgb.length; p++) {
-                if ((fillArgb[p] >>> 24) == 0 || !worldView.intersects(shapes.bounds[p])) continue;
-                fillProvince(g, p);
+    /**
+     * Tileable ocean swell: several crossing wave trains, lightly domain-warped, lit from the north-west. Sunlit faces
+     * are white, shaded faces deep navy, so the sea shows relief in motion even over very dark water.
+     */
+    private static synchronized BufferedImage swellTile(int variant) {
+        if (swell[variant] != null) return swell[variant];
+        final int T = 256;
+        double[][] k = variant == 0 ? new double[][]{{3, 1}, {-2, 4}, {4, -3}, {1, 7}, {-6, -3}, {7, 4}}
+                                    : new double[][]{{1, 3}, {4, -1}, {-3, -4}, {6, 2}, {-2, 6}, {5, -6}};
+        double[] amp = {1.0, 0.85, 0.7, 0.45, 0.3, 0.22}, ph = variant == 0 ? new double[]{0.3, 1.9, 4.1, 2.2, 5.0, 0.8} : new double[]{2.1, 0.4, 3.3, 5.5, 1.2, 4.4};
+        double[] h = new double[T * T];
+        for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++) {
+                double u = 2 * Math.PI * x / T, v = 2 * Math.PI * y / T;
+                double wu = 0.30 * Math.sin(u + 2 * v + 1), wv = 0.28 * Math.sin(2 * u - v);
+                double sum = 0;
+                for (int i = 0; i < k.length; i++) {
+                    double sn = Math.sin(k[i][0] * (u + wu) + k[i][1] * (v + wv) + ph[i]);
+                    sum += amp[i] * (1 - Math.abs(sn));                    // peaked crests, rounded troughs
+                }
+                h[y * T + x] = sum;
             }
-            g.dispose();
-            chFill.clear(); fillFull = false;
-        } else if (fillDirty && !chFill.isEmpty()) {
-            Graphics2D g = hq(fillImg);
-            for (int p : chFill) {
-                Rectangle r = screenRect(shapes.bounds[p], 3).intersection(screen);
-                if (r.isEmpty()) continue;
-                g.setTransform(new AffineTransform());
-                g.setClip(r);
-                g.setComposite(AlphaComposite.Clear);
-                g.fillRect(r.x, r.y, r.width, r.height);
-                g.setComposite(AlphaComposite.SrcOver);
-                g.translate(ox, oy);
-                g.scale(zoom, zoom);
-                Rectangle2D wr = worldRect(r);
-                for (int q = 0; q < fillArgb.length; q++)
-                    if ((fillArgb[q] >>> 24) != 0 && wr.intersects(shapes.bounds[q])) fillProvince(g, q);
+        BufferedImage t = new BufferedImage(T, T, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++) {
+                double dx = h[y * T + (x + 1) % T] - h[y * T + (x + T - 1) % T], dy = h[((y + 1) % T) * T + x] - h[((y + T - 1) % T) * T + x];
+                double lit = (-dx * 0.75 - dy * 0.55) * 1.5;                 // light from the north-west
+                int argb;
+                if (lit > 0) {
+                    double a = Math.min(1, lit);
+                    int al = (int) (Math.pow(a, 1.4) * 74 + Math.pow(a, 5) * 80);
+                    argb = (Math.min(255, al) << 24) | 0xDDF0FF;
+                } else {
+                    double a = Math.min(1, -lit);
+                    argb = ((int) (Math.pow(a, 1.3) * 70) << 24) | 0x031020;
+                }
+                t.setRGB(x, y, argb);
             }
-            g.dispose();
-            chFill.clear();
-        }
-        if (view || borderFull) {
-            borderImg = fresh(borderImg, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g = hq(borderImg);
-            g.setComposite(AlphaComposite.Clear);
-            g.fillRect(0, 0, W, H);
-            g.setComposite(AlphaComposite.SrcOver);
-            g.translate(ox, oy);
-            g.scale(zoom, zoom);
-            drawArcPasses(g, worldView);
-            g.dispose();
-            chArc.clear(); borderFull = false;
-        } else if (borderDirty && !chArc.isEmpty()) {
-            Graphics2D g = hq(borderImg);
-            for (int a : chArc) {
-                Rectangle r = screenRect(shapes.arcBounds[a], 6).intersection(screen);
-                if (r.isEmpty()) continue;
-                g.setTransform(new AffineTransform());
-                g.setClip(r);
-                g.setComposite(AlphaComposite.Clear);
-                g.fillRect(r.x, r.y, r.width, r.height);
-                g.setComposite(AlphaComposite.SrcOver);
-                g.translate(ox, oy);
-                g.scale(zoom, zoom);
-                drawArcPasses(g, worldRect(r));
-            }
-            g.dispose();
-            chArc.clear();
-        }
-        if (view) { layerOx = ox; layerOy = oy; layerZoom = zoom; fillFull = false; borderFull = false; }
-        viewDirty = fillDirty = borderDirty = false;
-        renderNs += System.nanoTime() - t0; renders++;
+        return swell[variant] = t;
     }
 
-    private void strokeArcs(Graphics2D g, Rectangle2D view, int cls, Color c, double px) {
-        g.setColor(c);
-        g.setStroke(new BasicStroke((float) (px / zoom), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        for (int a = 0; a < arcClass.length; a++)
-            if (arcClass[a] == cls && view.intersects(shapes.arcBounds[a])) g.draw(shapes.arcPath[a]);
-    }
+    /** Large soft blobs, tileable: drifting cloud shadows. */
+    static BufferedImage cloudShadow() { return cloudTile(); }
 
-    private static BufferedImage waveTile;
-    private static BufferedImage waveTile() {
-        if (waveTile != null) return waveTile;
-        int T = 256;
+    private static synchronized BufferedImage cloudTile() {
+        if (cloudTile != null) return cloudTile;
+        int T = 384;
         BufferedImage t = new BufferedImage(T, T, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < T; y++)
             for (int x = 0; x < T; x++) {
                 double u = 2 * Math.PI * x / T, v = 2 * Math.PI * y / T;
-                double warp = 0.9 * Math.sin(2 * u + 3 * v) + 0.6 * Math.sin(3 * u - 2 * v + 1);
-                double a = Math.sin(5 * u + 3 * v + warp) * 0.5 + 0.5, b = Math.sin(-3 * u + 6 * v + 1.7 * warp + 2) * 0.5 + 0.5;
-                double crest = Math.pow(a * b, 5) * 5.5;
-                int al = (int) Math.max(0, Math.min(255, crest * 120));
-                t.setRGB(x, y, (al << 24) | 0xEAF6FF);
+                double n = 0.5 + 0.5 * (0.55 * Math.sin(u + 1.3 * Math.sin(v * 2 + 1)) * Math.cos(v + 0.8 * Math.sin(u * 2))
+                        + 0.30 * Math.sin(2 * u + 3 * v + 2) * Math.cos(3 * u - v) + 0.15 * Math.sin(5 * u + 2 * v));
+                double c = Math.max(0, Math.min(1, (n - 0.52) / 0.30));
+                c = c * c * (3 - 2 * c);
+                t.setRGB(x, y, ((int) (c * 70) << 24) | 0x08121E);
             }
-        return waveTile = t;
+        return cloudTile = t;
     }
 
-    /** Animated swell: two scrolling crest layers composited only over the sea. */
-    private void drawWaves(Graphics2D g, int dx, int dy) {
-        int W = getWidth(), H = getHeight();
-        if (W < 2 || H < 2 || basemap.seaMask == null) return;
+    /** Blits a seamless tile over the visible rectangle, shifted by a fractional offset. */
+    private static void tile(Graphics2D b, BufferedImage tex, double offX, double offY, Rectangle vis, float alpha) {
+        int tw = tex.getWidth(), th = tex.getHeight();
+        double fx = offX - Math.floor(offX / tw) * tw, fy = offY - Math.floor(offY / th) * th;
+        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        for (double y = fy - th; y < vis.y + vis.height; y += th) {
+            if (y + th < vis.y) continue;
+            for (double x = fx - tw; x < vis.x + vis.width; x += tw) {
+                if (x + tw < vis.x) continue;
+                b.drawImage(tex, AffineTransform.getTranslateInstance(x, y), null);
+            }
+        }
+    }
+
+    // ---- glitter: sparkles scattered over open water, each with its own twinkle
+    private float[] glitterX, glitterY, glitterRate, glitterPhase;
+
+    private void buildGlitter() {
+        java.util.Random rnd = new java.util.Random(4242);
+        BufferedImage mask = basemap.seaMask;
+        int n = 0, want = 2600;
+        float[] xs = new float[want], ys = new float[want], rt = new float[want], ph = new float[want];
+        for (int tries = 0; tries < 60000 && n < want; tries++) {
+            double x = rnd.nextDouble() * w.width, y = rnd.nextDouble() * w.height;
+            int mx = (int) (x * Basemap.MASK_PX_PER_UNIT), my = (int) (y * Basemap.MASK_PX_PER_UNIT);
+            if (mx >= mask.getWidth() || my >= mask.getHeight() || (mask.getRGB(mx, my) >>> 24) < 250) continue;
+            xs[n] = (float) x; ys[n] = (float) y; rt[n] = (float) (1.2 + rnd.nextDouble() * 2.6); ph[n] = (float) (rnd.nextDouble() * 6.28); n++;
+        }
+        glitterX = Arrays.copyOf(xs, n); glitterY = Arrays.copyOf(ys, n); glitterRate = Arrays.copyOf(rt, n); glitterPhase = Arrays.copyOf(ph, n);
+    }
+
+    private void drawGlitter(Graphics2D g) {
+        if (zoom > 7 || zoom < 0.9) return;
+        if (glitterX == null) buildGlitter();
+        double t = System.currentTimeMillis() / 1000.0;
+        float fade = (float) Math.min(1, (7 - zoom) / 2.0);
+        int stride = zoom < 1.4 ? 5 : zoom < 2.2 ? 3 : zoom < 3.2 ? 2 : 1;
+        for (int i = 0; i < glitterX.length; i += stride) {
+            double sx = glitterX[i] * zoom + ox, sy = glitterY[i] * zoom + oy;
+            if (sx < -4 || sy < -4 || sx > getWidth() + 4 || sy > getHeight() + 4) continue;
+            double tw = Math.sin(t * glitterRate[i] + glitterPhase[i]);
+            if (tw < 0.55) continue;
+            float a = (float) ((tw - 0.55) / 0.45) * fade;
+            g.setColor(new Color(1f, 1f, 1f, 0.55f * a));
+            g.fillRect((int) sx, (int) sy, 2, 2);
+            g.setColor(new Color(1f, 1f, 1f, 0.22f * a));
+            g.fillRect((int) sx - 1, (int) sy, 4, 2);
+            g.fillRect((int) sx, (int) sy - 1, 2, 4);
+        }
+    }
+
+    private BufferedImage fxBuf;
+    private MapLayers.Result fxFor;
+    private long fxStamp;
+    private static final int FX = MapLayers.FX_DIV;
+
+    /** Animated swell, surf and cloud shadows, drawn at quarter resolution and scaled up (they are soft by nature). */
+    private void drawFx(Graphics2D g, MapLayers.Result r, double s, double tx, double ty) {
+        if (zoom > 10) return;
+        BufferedImage mask = r.waveMask;
+        if (fxBuf == null || fxBuf.getWidth() != mask.getWidth() || fxBuf.getHeight() != mask.getHeight()) { fxBuf = new BufferedImage(mask.getWidth(), mask.getHeight(), BufferedImage.TYPE_INT_ARGB); fxFor = null; }
         long now = System.currentTimeMillis();
-        if (waveMask == null || waveMask.getWidth() != W || waveMask.getHeight() != H) { waveMask = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB); waveBuf = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB); waveMaskDirty = true; }
-        if (waveMaskDirty) {
-            Graphics2D m = waveMask.createGraphics();
-            m.setComposite(AlphaComposite.Clear); m.fillRect(0, 0, W, H); m.setComposite(AlphaComposite.SrcOver);
-            m.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            AffineTransform at = new AffineTransform();
-            at.translate(layerOx, layerOy);
-            at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
-            m.drawImage(basemap.seaMask, at, null);
-            m.dispose();
-            waveMaskDirty = false; waveStamp = 0;
-        }
-        if (now - waveStamp >= 45) {
-            waveStamp = now;
-            Graphics2D b = waveBuf.createGraphics();
-            b.setComposite(AlphaComposite.Clear); b.fillRect(0, 0, W, H); b.setComposite(AlphaComposite.SrcOver);
-            BufferedImage tile = waveTile();
-            double t = now / 1000.0;
-            double sc = Math.max(0.8, Math.min(2.2, 0.8 + zoom * 0.25));
-            java.awt.geom.AffineTransform a1 = new java.awt.geom.AffineTransform();
-            a1.translate(t * 9, t * 5); a1.scale(sc, sc);
-            b.setPaint(new TexturePaint(tile, new Rectangle2D.Double(0, 0, 256, 256)));
-            b.setTransform(a1); b.fillRect((int) (-t * 9 / sc) - 300, (int) (-t * 5 / sc) - 300, (int) (W / sc) + 700, (int) (H / sc) + 700);
-            java.awt.geom.AffineTransform a2 = new java.awt.geom.AffineTransform();
-            a2.translate(-t * 6 + 90, t * 8 + 40); a2.scale(sc * 1.45, sc * 1.45);
-            b.setTransform(a2); b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
-            b.fillRect((int) (t * 6 / (sc * 1.45)) - 400, (int) (-t * 8 / (sc * 1.45)) - 300, (int) (W / (sc * 1.45)) + 900, (int) (H / (sc * 1.45)) + 700);
-            b.setTransform(new java.awt.geom.AffineTransform());
-            b.setComposite(AlphaComposite.DstIn);
-            b.drawImage(waveMask, 0, 0, null);
-            b.dispose();
-        }
-        g.drawImage(waveBuf, dx, dy, null);
+        if (fxFor != r || now - fxStamp >= 45) { fxFor = r; fxStamp = now; renderFx(r, now, s, tx, ty); }
+        float a = (float) Math.max(0, Math.min(1, (10 - zoom) / 4.0));
+        Composite old = g.getComposite();
+        if (a < 1) g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(fxBuf, new AffineTransform(FX * s, 0, 0, FX * s, tx, ty), null);
+        g.setComposite(old);
+        drawGlitter(g);
+    }
+
+    private void renderFx(MapLayers.Result r, long now, double s, double tx, double ty) {
+        int W = fxBuf.getWidth(), H = fxBuf.getHeight();
+        // only the part of the buffer that is actually on screen needs painting
+        int vx0 = (int) Math.max(0, Math.floor((-tx / s) / FX) - 2), vy0 = (int) Math.max(0, Math.floor((-ty / s) / FX) - 2);
+        int vx1 = (int) Math.min(W, Math.ceil(((getWidth() - tx) / s) / FX) + 2), vy1 = (int) Math.min(H, Math.ceil(((getHeight() - ty) / s) / FX) + 2);
+        Rectangle vis = new Rectangle(vx0, vy0, Math.max(1, vx1 - vx0), Math.max(1, vy1 - vy0));
+        Graphics2D b = fxBuf.createGraphics();
+        b.setComposite(AlphaComposite.Clear); b.fillRect(0, 0, W, H); b.setComposite(AlphaComposite.SrcOver);
+        b.setClip(vis);
+        b.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        double t = now / 1000.0;
+        // two crossing swells with different headings
+        tile(b, swellTile(0), t * 1.9, t * 0.8, vis, 1f);
+        tile(b, swellTile(1), -t * 1.3 + 40, t * 1.7 + 11, vis, 0.7f);
+        b.setComposite(AlphaComposite.DstIn);
+        b.drawImage(r.waveMask, 0, 0, null);
+        // surf: two bands at different distances from the coast breathe in antiphase
+        double pa = 0.5 + 0.5 * Math.sin(t * 1.5), pb = 0.5 + 0.5 * Math.sin(t * 1.5 + Math.PI);
+        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (0.25 + 0.55 * pa)));
+        b.drawImage(r.shoreA, 0, 0, null);
+        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (0.15 + 0.5 * pb)));
+        b.drawImage(r.shoreB, 0, 0, null);
+        // cloud shadows fall on land and sea alike
+        tile(b, cloudTile(), t * 0.9, t * 0.35, vis, 0.85f);
+        b.dispose();
     }
 
     @Override
     protected void paintComponent(Graphics g0) {
+        long t0 = System.nanoTime(), tm = t0;
         super.paintComponent(g0);
         Graphics2D g = (Graphics2D) g0;
         if (!fitted && getWidth() > 0) {
             zoom = Math.max(0.5, getWidth() / (double) w.width);
             ox = 0; oy = (getHeight() - w.height * zoom) / 2;
-            fitted = true; viewDirty = true;
+            fitted = true;
         }
-        if (viewDirty || fillDirty || borderDirty || baseImg == null || baseImg.getWidth() != getWidth() || baseImg.getHeight() != getHeight() || layerZoom != zoom) renderLayers();
-        int dx = (int) Math.round(ox - layerOx), dy = (int) Math.round(oy - layerOy);
-        g.drawImage(baseImg, dx, dy, null);
-        drawWaves(g, dx, dy);
-        g.drawImage(fillImg, dx, dy, null);
-        g.drawImage(borderImg, dx, dy, null);
+        if (cur == null) renderNow();
+        else if (layersStale()) requestRender();
+        MapLayers.Result r = cur;
+        if (r != null) {
+            double s = zoom / r.zoom;
+            double tx = ox - s * (MapLayers.MARGIN + r.ox), ty = oy - s * (MapLayers.MARGIN + r.oy);
+            if (Math.abs(s - 1) < 1e-6) g.drawImage(r.composite, (int) Math.round(tx), (int) Math.round(ty), null);
+            else {
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.drawImage(r.composite, new AffineTransform(s, 0, 0, s, tx, ty), null);
+            }
+            seg[0] += System.nanoTime() - tm; tm = System.nanoTime();
+            drawFx(g, r, s, tx, ty);
+            seg[1] += System.nanoTime() - tm; tm = System.nanoTime();
+        }
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         hits.clear();
-        drawHighlights(g);
-        drawLabels(g);
+        drawHighlights(g); seg[2] += System.nanoTime() - tm; tm = System.nanoTime();
+        drawLabels(g); seg[3] += System.nanoTime() - tm; tm = System.nanoTime();
+        drawCities(g); seg[4] += System.nanoTime() - tm; tm = System.nanoTime();
         drawCapitals(g);
         drawPath(g);
-        drawArmies(g);
+        drawArmies(g); seg[5] += System.nanoTime() - tm; tm = System.nanoTime();
         if (mode == Mode.INTEL) drawLegend(g);
         drawControls(g);
         drawTooltip(g);
-        drawToasts(g);
-        if (showPerf) { g.setFont(Fonts.ui(12.5f)); g.setColor(new Color(0, 0, 0, 170)); g.fillRoundRect(10, 10, 560, 24, 8, 8); g.setColor(new Color(150, 255, 170)); g.drawString(perf, 18, 27); }
+        drawToasts(g); seg[6] += System.nanoTime() - tm; tm = System.nanoTime();
+        if (showPerf) { g.setFont(Fonts.ui(12.5f)); g.setColor(new Color(0, 0, 0, 170)); g.fillRoundRect(10, 10, 640, 24, 8, 8); g.setColor(new Color(150, 255, 170)); g.drawString(perf + String.format("   paint %.1f ms", paintNs / 1e6 / Math.max(1, paints)), 18, 27); }
         if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
+        paintNs += System.nanoTime() - t0; paints++;
+        if (paints > 240) { paintNs /= 2; paints /= 2; }
     }
 
     /** Screen position of a point given in map units (used by tests to click exact pixels). */
@@ -529,30 +594,56 @@ final class MapPanel extends JPanel {
         g.setTransform(old);
     }
 
+    /** Province names once you are zoomed in close enough to care. Country names live in the cached layers. */
     private void drawLabels(Graphics2D g) {
-        double fade = zoom > 7 ? Math.max(0, 1 - (zoom - 7) / 4) : 1;
-        if (fade > 0.02) {
-            for (Label l : labels) {
-                double px = l.width * zoom;
-                int n = l.text.length();
-                double size = Math.min(34, px / (n * 0.56 + 1));
-                if (size < 9) continue;
-                double sx = l.cx * zoom + ox, sy = l.cy * zoom + oy;
-                if (sx < -200 || sy < -50 || sx > getWidth() + 200 || sy > getHeight() + 50) continue;
-                drawTracked(g, l.text, sx, sy, (float) size, size * 0.14, new Color(255, 255, 255, (int) (225 * fade)), new Color(20, 15, 11, (int) (180 * fade)));
-            }
+        if (zoom < 4.5) return;
+        Intel in = gs.intelOf(gs.player);
+        Font f = Fonts.label(11.5f);
+        Color fill = new Color(255, 255, 255, 205), halo = new Color(20, 15, 11, 190);
+        for (WorldData.ProvinceInfo p : w.provinces) {
+            if (p.sea || shapes.bounds[p.id].width * zoom < 56) continue;
+            double sx = p.cx * zoom + ox, sy = p.cy * zoom + oy;
+            if (sx < -100 || sy < -30 || sx > getWidth() + 100 || sy > getHeight() + 30) continue;
+            if (in.knownOwner[p.id] < 0) continue;
+            Sprites.Sprite sp = Sprites.text(p.name.toUpperCase(), f, fill, halo, 2.4f, 0.8);
+            g.drawImage(sp.img(), (int) Math.round(sx - sp.textW() / 2.0) - sp.padX(), (int) Math.round(sy + 16) - sp.baseline(), null);
         }
-        if (zoom >= 4.5) {
-            for (WorldData.ProvinceInfo p : w.provinces) {
-                if (p.sea || shapes.bounds[p.id].width * zoom < 56) continue;
-                double sx = p.cx * zoom + ox, sy = p.cy * zoom + oy;
-                if (sx < -100 || sy < -30 || sx > getWidth() + 100 || sy > getHeight() + 30) continue;
-                String name = p.name;
-                int ko = gs.intelOf(gs.player).knownOwner[p.id];
-                if (ko < 0) continue;
-                drawTracked(g, name.toUpperCase(), sx, sy + 12, 11.5f, 0.8, new Color(255, 255, 255, 190), new Color(20, 15, 11, 170));
-            }
+    }
+
+    /** Major cities as glowing dots with names, thinning out as you zoom out. Only cities in provinces we know the owner of. */
+    private void drawCities(Graphics2D g) {
+        if (zoom < 1.5 || extras.cities.isEmpty()) return;
+        Intel in = gs.intelOf(gs.player);
+        double minPop = zoom < 2.0 ? 6_000_000 : zoom < 2.8 ? 2_500_000 : zoom < 3.8 ? 1_000_000 : zoom < 5 ? 500_000 : 0;
+        List<Rectangle> placed = new ArrayList<>();
+        Font font = Fonts.label(zoom < 3 ? 11.5f : 12.5f);
+        int shown = 0;
+        for (MapExtras.City c : extras.cities) {
+            if (shown > 120) break;
+            if (c.population() < minPop && !(c.capital() && zoom >= 2.4)) continue;
+            double sx = c.x() * zoom + ox, sy = c.y() * zoom + oy;
+            if (sx < -20 || sy < -20 || sx > getWidth() + 20 || sy > getHeight() + 20) continue;
+            if (in.knownOwner[c.province()] < 0) continue;
+            double r = c.population() > 8_000_000 ? 4.2 : c.population() > 2_000_000 ? 3.4 : 2.6;
+            Sprites.Sprite sp = Sprites.text(c.name(), font, c.capital() ? new Color(255, 226, 140) : new Color(246, 240, 226), new Color(16, 11, 7, 200), 2.8f, 0);
+            Rectangle label = new Rectangle((int) sx + 6, (int) sy - 9, sp.textW() + 4, 15);
+            boolean room = true;
+            for (Rectangle p : placed) if (p.intersects(label)) { room = false; break; }
+            drawCityDot(g, sx, sy, r, c.capital());
+            if (!room && !c.capital()) continue;
+            placed.add(label);
+            g.drawImage(sp.img(), (int) Math.round(sx + 7) - sp.padX(), (int) Math.round(sy + 4) - sp.baseline(), null);
+            shown++;
         }
+    }
+
+    private void drawCityDot(Graphics2D g, double x, double y, double r, boolean capital) {
+        int gr = (int) Math.round(r * 3.2);
+        g.drawImage(Sprites.glow(gr, 0xFFD678, 110), (int) Math.round(x) - gr, (int) Math.round(y) - gr, null);
+        g.setColor(new Color(20, 14, 8, 230));
+        g.fill(new Ellipse2D.Double(x - r - 1.2, y - r - 1.2, 2 * r + 2.4, 2 * r + 2.4));
+        g.setColor(capital ? new Color(255, 214, 90) : new Color(255, 244, 214));
+        g.fill(new Ellipse2D.Double(x - r, y - r, 2 * r, 2 * r));
     }
 
     private final Map<String, Shape> textCache = new HashMap<>();
@@ -632,21 +723,38 @@ final class MapPanel extends JPanel {
         }
     }
 
+    /** Movement order: a glowing route with flowing chevrons and an arrow head, like a strategic-map advance arrow. */
     private void drawPath(Graphics2D g) {
         Army a = gs.armies.get(selArmy);
         if (a == null || a.owner != gs.player || a.path.isEmpty()) return;
-        Point2D.Double prev = screen(a.province);
-        g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(0, 0, 0, 110));
+        Point2D.Double start = screen(a.province);
         Path2D.Double route = new Path2D.Double();
-        route.moveTo(prev.x, prev.y);
-        for (int p : a.path) { Point2D.Double s = screen(p); route.lineTo(s.x, s.y); prev = s; }
+        route.moveTo(start.x, start.y);
+        Point2D.Double prev = start, last = start;
+        List<Point2D.Double> nodes = new ArrayList<>();
+        for (int p : a.path) { Point2D.Double s = screen(p); route.lineTo(s.x, s.y); nodes.add(s); prev = last; last = s; }
+        Stroke old = g.getStroke();
+        g.setStroke(new BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(0, 0, 0, 90));
         g.draw(route);
-        g.setStroke(new BasicStroke(2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{7, 5}, 0));
-        g.setColor(new Color(255, 232, 110, 235));
+        g.setStroke(new BasicStroke(5.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(214, 150, 40, 235));
         g.draw(route);
-        g.setColor(new Color(255, 232, 110));
-        g.fill(new Ellipse2D.Double(prev.x - 4.5, prev.y - 4.5, 9, 9));
+        g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 1f, new float[]{9, 15}, (float) (24 - (System.currentTimeMillis() % 1200) / 1200.0 * 24)));
+        g.setColor(new Color(255, 244, 190, 240));
+        g.draw(route);
+        for (Point2D.Double n : nodes) { g.setColor(new Color(255, 232, 150)); g.fill(new Ellipse2D.Double(n.x - 3, n.y - 3, 6, 6)); }
+        // arrow head on the last leg
+        double ang = Math.atan2(last.y - prev.y, last.x - prev.x);
+        AffineTransform at = g.getTransform();
+        g.translate(last.x, last.y); g.rotate(ang);
+        Path2D.Double head = new Path2D.Double();
+        head.moveTo(15, 0); head.lineTo(-6, -11); head.lineTo(-1, 0); head.lineTo(-6, 11); head.closePath();
+        g.setColor(new Color(0, 0, 0, 110)); g.translate(1.5, 2); g.fill(head); g.translate(-1.5, -2);
+        g.setColor(new Color(255, 218, 96)); g.fill(head);
+        g.setStroke(new BasicStroke(1.4f)); g.setColor(new Color(120, 70, 10)); g.draw(head);
+        g.setTransform(at);
+        g.setStroke(old);
     }
 
     private void drawArmies(Graphics2D g) {
@@ -672,39 +780,82 @@ final class MapPanel extends JPanel {
 
     private static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }
 
-    /** Army marker: the nation's flag with a number pill underneath. Unknown owners get a plain grey flag. */
+    private final Map<String, BufferedImage> markerCache = new HashMap<>();
+
+    /** The static part of an army marker (shadow, flag, frame, number pill), cached per look. */
+    private BufferedImage markerSprite(WorldData.NationInfo nation, String text, double sz, boolean own, boolean stale) {
+        String key = (nation == null ? "?" : nation.tag) + "|" + text + "|" + Math.round(sz * 20) + "|" + own + "|" + stale;
+        BufferedImage hit = markerCache.get(key);
+        if (hit != null) return hit;
+        int fw = (int) (28 * sz), fh = Math.round(fw * 0.75f), ph = (int) (15 * sz);
+        Font f = Fonts.labelBold((float) (13 * sz));
+        BufferedImage probe = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        FontMetrics fm = probe.createGraphics().getFontMetrics(f);
+        int pw = Math.max(fw - 6, fm.stringWidth(text) + 14);
+        int W = Math.max(fw, pw) + 16, H = fh + ph + 16;
+        BufferedImage img = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        int x = (W - fw) / 2, y = 5;
+        // soft drop shadow
+        g.setColor(new Color(0, 0, 0, 70));
+        g.fill(new RoundRectangle2D.Double(x + 1, y + 4, fw + 2, fh + ph / 2.0 + 2, 8, 8));
+        g.setColor(new Color(0, 0, 0, 60));
+        g.fill(new RoundRectangle2D.Double(x - 1, y + 2, fw + 4, fh + ph / 2.0 + 4, 9, 9));
+        // frame: gold for our own forces, dark steel for everyone else
+        Color frame = own ? new Color(238, 196, 96) : new Color(36, 28, 20, 240);
+        g.setColor(frame);
+        g.fill(new RoundRectangle2D.Double(x - 2, y - 2, fw + 4, fh + 4, 8, 8));
+        g.drawImage(Assets.flag(nation, fw), x, y, null);
+        g.setPaint(new GradientPaint(0, y, new Color(255, 255, 255, 60), 0, y + fh / 2f, new Color(255, 255, 255, 0)));
+        g.fill(new RoundRectangle2D.Double(x, y, fw, fh / 2.0, 6, 6));
+        if (stale && !own) {
+            g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0));
+            g.setColor(new Color(255, 255, 255, 140));
+            g.draw(new RoundRectangle2D.Double(x - 2, y - 2, fw + 4, fh + 4, 8, 8));
+        }
+        // number plate
+        int px = (W - pw) / 2, py = y + fh - 1;
+        g.setPaint(new GradientPaint(0, py, new Color(52, 42, 32, 245), 0, py + ph, new Color(20, 15, 11, 248)));
+        g.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
+        g.setColor(own ? new Color(238, 196, 96, 230) : new Color(255, 255, 255, 90));
+        g.setStroke(new BasicStroke(1.2f));
+        g.draw(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
+        g.setFont(f);
+        g.setColor(Color.WHITE);
+        g.drawString(text, px + (pw - fm.stringWidth(text)) / 2, py + (ph + fm.getAscent()) / 2 - 2);
+        g.dispose();
+        if (markerCache.size() > 400) markerCache.clear();
+        markerCache.put(key, img);
+        return img;
+    }
+
+    /** Army marker: the nation's flag with a number plate underneath. Unknown owners get a plain grey flag. */
     private void drawMarker(Graphics2D g, int prov, Map<Integer, Integer> slot, WorldData.NationInfo nation, String text,
                             int armyId, boolean own, float alpha, boolean inBattle, boolean stale) {
         Point2D.Double s = screen(prov);
-        if (s.x < -50 || s.y < -50 || s.x > getWidth() + 50 || s.y > getHeight() + 50) return;
+        if (s.x < -60 || s.y < -60 || s.x > getWidth() + 60 || s.y > getHeight() + 60) return;
         double sz = Math.max(0.85, Math.min(1.35, 0.74 + zoom * 0.1));
-        int fw = (int) (27 * sz), fh = Math.round(fw * 0.75f), ph = (int) (14 * sz);
+        BufferedImage spr = markerSprite(nation, text, Math.round(sz * 10) / 10.0, own, stale);
         int k = slot.merge(prov, 1, Integer::sum) - 1;
-        int x = (int) s.x - fw / 2 + k * (fw + 5), y = (int) s.y - fh / 2 - k * 2;
+        int fw = (int) (28 * sz), fh = Math.round(fw * 0.75f), ph = (int) (15 * sz);
+        int x = (int) s.x - spr.getWidth() / 2 + k * (fw + 6), y = (int) s.y - fh / 2 - 5 - k * 2;
         Composite old = g.getComposite();
-        g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        if (alpha < 1) g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
         boolean selected = armyId == selArmy;
-        g.setColor(new Color(0, 0, 0, 100));
-        g.fill(new RoundRectangle2D.Double(x + 1.5, y + 3, fw, fh + ph / 2.0, 6, 6));
-        if (inBattle) { g.setColor(new Color(255, 70, 50, 150)); g.setStroke(new BasicStroke(6f)); g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6)); }
-        if (selected) { g.setColor(new Color(255, 230, 90, 170)); g.setStroke(new BasicStroke(6f)); g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6)); }
-        g.drawImage(Assets.flag(nation, fw), x, y, null);
-        g.setStroke(stale && !own ? new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0) : new BasicStroke(own ? 2f : 1.2f));
-        g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(26, 20, 15, 230));
-        g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6));
-        Font f = Fonts.labelBold((float) (12.5 * sz));
-        g.setFont(f);
-        FontMetrics fm = g.getFontMetrics();
-        int pw = Math.max(fw - 8, fm.stringWidth(text) + 12), px = x + (fw - pw) / 2, py = y + fh - 2;
-        g.setColor(new Color(21, 16, 12, 235));
-        g.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
-        g.setColor(own ? new Color(255, 255, 255, 200) : new Color(255, 255, 255, 90));
-        g.setStroke(new BasicStroke(1f));
-        g.draw(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
-        g.setColor(Color.WHITE);
-        g.drawString(text, px + (pw - fm.stringWidth(text)) / 2, py + (ph + fm.getAscent()) / 2 - 2);
+        if (inBattle) {
+            double pulse = 0.5 + 0.5 * Math.sin(System.currentTimeMillis() / 140.0);
+            g.drawImage(Sprites.glow(34, 0xFF4632, (int) (110 + 90 * pulse)), x + spr.getWidth() / 2 - 34, y + 10 - 34 + fh / 2, null);
+        }
+        if (selected) {
+            g.setColor(new Color(255, 230, 90, 190));
+            g.setStroke(new BasicStroke(3.2f));
+            g.draw(new RoundRectangle2D.Double(x + (spr.getWidth() - fw) / 2.0 - 4, y + 1, fw + 8, fh + 8, 10, 10));
+        }
+        g.drawImage(spr, x, y, null);
         g.setComposite(old);
-        hits.add(new Hit(new Rectangle(x, y, fw, fh + ph), armyId, own));
+        hits.add(new Hit(new Rectangle(x + (spr.getWidth() - fw) / 2, y + 5, fw, fh + ph), armyId, own));
     }
 
     private void drawLegend(Graphics2D g) {
@@ -712,10 +863,8 @@ final class MapPanel extends JPanel {
         g.setFont(Fonts.label(13f));
         FontMetrics fm = g.getFontMetrics();
         int wd = fm.stringWidth(t) + 24;
-        g.setColor(new Color(22, 17, 12, 190));
-        g.fillRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
-        g.setColor(new Color(255, 255, 255, 40));
-        g.drawRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
+        Tex.plate(g, new RoundRectangle2D.Float((getWidth() - wd) / 2f, getHeight() - 132, wd, 24, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
+        Tex.frame(g, (getWidth() - wd) / 2f + 0.5f, getHeight() - 131.5f, wd - 1, 23, 8, false, false);
         g.setColor(new Color(225, 232, 244));
         g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 115);
     }
@@ -801,23 +950,27 @@ final class MapPanel extends JPanel {
     private void drawControls(Graphics2D g) {
         modeRects.clear();
         Mode[] modes = Mode.values();
-        int bw = 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 16;
+        int bw = 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fillRoundRect(x0 + 2, y0 + 3, total, bh + 12, 22, 22);
-        g.setColor(new Color(24, 19, 14, 228));
-        g.fillRoundRect(x0, y0 - 2, total, bh + 12, 22, 22);
-        g.setColor(new Color(255, 255, 255, 36));
-        g.setStroke(new BasicStroke(1f));
-        g.drawRoundRect(x0, y0 - 2, total, bh + 12, 22, 22);
+        g.setColor(new Color(0, 0, 0, 100));
+        g.fill(new RoundRectangle2D.Float(x0 + 2, y0 + 4, total, bh + 12, 12, 12));
+        Tex.plate(g, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Tex.Kind.WOOD, 1f);
+        Tex.frame(g, x0 + 0.5f, y0 - 1.5f, total - 1, bh + 11, 12, false, false);
         g.setFont(Fonts.label(14.5f));
         for (int i = 0; i < modes.length; i++) {
-            Rectangle r = new Rectangle(x0 + 8 + i * (bw + gap), y0 + 3, bw, bh);
+            Rectangle r = new Rectangle(x0 + 10 + i * (bw + gap), y0 + 3, bw, bh);
             modeRects.add(r);
             boolean on = modes[i] == mode, hov = hoverOverlay == i;
-            g.setColor(on ? Ui.ACCENT : hov ? new Color(255, 255, 255, 30) : new Color(255, 255, 255, 12));
-            g.fillRoundRect(r.x, r.y, r.width, r.height, 16, 16);
-            g.setColor(on ? Ui.BG : Ui.TEXT);
+            RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
+            if (on) {
+                Tex.plate(g, pill, Tex.Kind.GOLD, 0.8f);
+                g.setColor(new Color(255, 236, 170, 200)); g.setStroke(new BasicStroke(1.2f)); g.draw(pill);
+            } else {
+                g.setColor(hov ? new Color(255, 236, 190, 46) : new Color(0, 0, 0, 70));
+                g.fill(pill);
+                g.setColor(new Color(255, 236, 190, hov ? 110 : 40)); g.setStroke(new BasicStroke(1f)); g.draw(pill);
+            }
+            g.setColor(on ? new Color(40, 26, 8) : hov ? Color.WHITE : new Color(232, 222, 202));
             String label = modes[i].label.replace(" / Vision", "").toUpperCase();
             g.drawString(label, r.x + (r.width - g.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
         }
@@ -830,13 +983,14 @@ final class MapPanel extends JPanel {
         Rectangle[] rs = {zoomInRect, zoomOutRect, homeRect};
         for (int i = 0; i < 3; i++) {
             Rectangle r = rs[i];
-            g.setColor(new Color(24, 19, 14, 228));
-            g.fillRoundRect(r.x, r.y, r.width, r.height, 14, 14);
-            g.setColor(hoverOverlay == 10 + i ? new Color(255, 255, 255, 50) : new Color(255, 255, 255, 24));
-            g.drawRoundRect(r.x, r.y, r.width, r.height, 14, 14);
+            boolean hov = hoverOverlay == 10 + i;
+            g.setColor(new Color(0, 0, 0, 100));
+            g.fill(new RoundRectangle2D.Float(r.x + 1.5f, r.y + 3, r.width, r.height, 8, 8));
+            Tex.plate(g, new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8), hov ? Tex.Kind.LEATHER : Tex.Kind.WOOD, 1f);
+            Tex.frame(g, r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1, 8, false, hov);
             if (glyph[i] != null) {
                 g.setFont(Fonts.ui(24f));
-                g.setColor(Ui.TEXT);
+                g.setColor(hov ? Color.WHITE : new Color(240, 228, 204));
                 g.drawString(glyph[i], r.x + (r.width - g.getFontMetrics().stringWidth(glyph[i])) / 2, r.y + 27);
             } else g.drawImage(Assets.icon("castle", 24, Ui.GOLD), r.x + 7, r.y + 7, null);
         }
@@ -859,12 +1013,10 @@ final class MapPanel extends JPanel {
         int wd = Math.max(Math.max(fm.stringWidth(l1) + 40, fm.stringWidth(l2)), Math.max(fm.stringWidth(l3), l4 == null ? 0 : fm.stringWidth(l4))) + 28;
         int h = 22 + 18 * (l4 == null ? 3 : 4) + 8;
         int x = Math.min(mouse.x + 18, getWidth() - wd - 8), y = Math.min(mouse.y + 20, getHeight() - h - 8);
-        g.setColor(new Color(0, 0, 0, 100));
-        g.fillRoundRect(x + 2, y + 3, wd, h, 14, 14);
-        g.setColor(new Color(24, 19, 14, 238));
-        g.fillRoundRect(x, y, wd, h, 14, 14);
-        g.setColor(new Color(255, 255, 255, 40));
-        g.drawRoundRect(x, y, wd, h, 14, 14);
+        g.setColor(new Color(0, 0, 0, 110));
+        g.fill(new RoundRectangle2D.Float(x + 2, y + 4, wd, h, 8, 8));
+        Tex.plate(g, new RoundRectangle2D.Float(x, y, wd, h, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
+        Tex.frame(g, x + 0.5f, y + 0.5f, wd - 1, h - 1, 8, false, true);
         if (ko >= 0) g.drawImage(Assets.flag(w.nations.get(ko), 22), x + 10, y + 9, null);
         g.setFont(Fonts.labelBold(16f));
         g.setColor(Color.WHITE);

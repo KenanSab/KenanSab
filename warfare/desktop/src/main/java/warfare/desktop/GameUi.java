@@ -141,10 +141,10 @@ final class GameUi extends JPanel {
             Graphics2D g = (Graphics2D) g0.create();
             Wf.quality(g);
             int w = getWidth(), h = getHeight();
-            g.setColor(new Color(24, 19, 14, 215));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 16, 16));
-            g.setColor(new Color(255, 255, 255, 36));
-            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 2, h - 2, 16, 16));
+            g.setColor(new Color(0, 0, 0, 90));
+            g.fill(new RoundRectangle2D.Float(2, 4, w - 3, h - 3, 8, 8));
+            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
+            Tex.frame(g, 0.5f, 0.5f, w - 2, h - 2, 8, false, false);
             g.drawImage(Assets.icon("tab_reports", 16, Ui.MUTED), 10, 7, null);
             g.setFont(Fonts.ui(13f));
             g.setColor(Ui.TEXT);
