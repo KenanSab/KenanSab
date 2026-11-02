@@ -336,6 +336,9 @@ final class MapPanel extends JPanel {
         if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
     }
 
+    /** Screen position of a province centre (also used by tests to aim synthetic clicks). */
+    Point2D.Double screenOf(int p) { return screen(p); }
+
     private Point2D.Double screen(int p) {
         WorldData.ProvinceInfo pi = w.provinces.get(p);
         return new Point2D.Double(pi.cx * zoom + ox, pi.cy * zoom + oy);
