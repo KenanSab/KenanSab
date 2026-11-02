@@ -53,3 +53,13 @@ xvfb-run -a ./gradlew :desktop:test                   # audio, map audit, real-w
 
 Handy flags: `--nation TAG` skips the picker, `--smoke [seconds]` plays the real window unattended and prints
 timings, `--shot out.png TAG DAYS FOE MODE TAB` renders a headless screenshot, `--export-audio dir` writes the score as WAV, `--basemap out.png` re-bakes the terrain, relief and sea underlay into `assets/map` (only needed after changing `Basemap.java`).
+
+## Screenshots
+
+![Europe at war](docs/screens/map_europe.jpg)
+![Close-up with rivers, cities and region names](docs/screens/map_closeup.jpg)
+![Terrain mode](docs/screens/map_terrain.jpg)
+![Start screen](docs/screens/start_screen.jpg)
+![Economy window](docs/screens/ui_economy.jpg)
+![Diplomacy window](docs/screens/ui_diplomacy.jpg)
+![Nuclear strike](docs/screens/map_nuke.jpg)

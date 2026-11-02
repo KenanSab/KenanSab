@@ -89,7 +89,7 @@ class UiFuzzTest {
                     }
                     case 10 -> { int n = r.nextInt(world.nations.size()); if (gs.ns[n].alive) ui[0].openCountry(n); }
                     case 11 -> ui[0].clearSelection();
-                    case 12 -> { for (int k = 0; k < 1 + r.nextInt(4); k++) { if (ui[0].modals.isOpen()) break; ui[0].tick(); } }
+                    case 12 -> { if (ui[0].modals.isOpen()) ui[0].modals.clear(); for (int k = 0; k < 1 + r.nextInt(6); k++) { if (ui[0].modals.isOpen()) break; ui[0].tick(); } }
                     case 13 -> { int p = r.nextInt(world.provinces.size()); map.centerOn(p, 0.6 + r.nextDouble() * 9); }
                     case 14 -> { if (step % 3 == 0) frame[0].setSize(900 + r.nextInt(900), 600 + r.nextInt(400)); frame[0].validate(); }
                     default -> mouse(map, MouseEvent.MOUSE_MOVED, x, y, 0);

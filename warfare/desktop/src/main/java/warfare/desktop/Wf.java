@@ -32,7 +32,19 @@ final class Wf {
     static final class Button extends JButton {
         Kind kind = Kind.NORMAL;
         private boolean hover, down;
+        private float hoverT;                       // 0..1, eased toward the hover state so highlights fade instead of snapping
+        private javax.swing.Timer easing;
         private final String iconName;
+
+        private void ease() {
+            if (easing == null) easing = new javax.swing.Timer(16, e -> {
+                float target = hover ? 1f : 0f;
+                hoverT += (target - hoverT) * 0.32f;
+                if (Math.abs(target - hoverT) < 0.02f) { hoverT = target; easing.stop(); }
+                repaint();
+            });
+            if (!easing.isRunning()) easing.start();
+        }
 
         Button(String text, String icon, Kind kind, Runnable action) {
             super(text == null ? "" : text);
@@ -45,8 +57,8 @@ final class Wf {
             setBorder(BorderFactory.createEmptyBorder(7, 14, 7, 14));
             setAlignmentX(Component.LEFT_ALIGNMENT);
             addMouseListener(new MouseAdapter() {
-                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
-                @Override public void mouseExited(MouseEvent e) { hover = false; down = false; repaint(); }
+                @Override public void mouseEntered(MouseEvent e) { hover = true; ease(); }
+                @Override public void mouseExited(MouseEvent e) { hover = false; down = false; ease(); }
                 @Override public void mousePressed(MouseEvent e) { down = true; repaint(); }
                 @Override public void mouseReleased(MouseEvent e) { down = false; repaint(); }
             });
@@ -73,14 +85,14 @@ final class Wf {
                 case GHOST -> { top = new Color(255, 255, 255, 10); bot = new Color(255, 255, 255, 4); edge = new Color(255, 255, 255, 30); text = Ui.TEXT; }
                 default -> { top = new Color(79, 63, 50); bot = new Color(56, 45, 35); edge = new Color(255, 255, 255, 38); text = Ui.TEXT; }
             }
-            if (hover && on) { top = brighter(top, 1.18); bot = brighter(bot, 1.18); if (kind != Kind.PRIMARY) edge = new Color(236, 192, 92, 190); }
+            if (hoverT > 0.01f && on) { top = brighter(top, 1 + 0.18 * hoverT); bot = brighter(bot, 1 + 0.18 * hoverT); if (kind != Kind.PRIMARY) edge = new Color(236, 192, 92, (int) (40 + 150 * hoverT)); }
             if (down && on) { top = brighter(top, 0.82); bot = brighter(bot, 0.82); }
             RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, 6, 6);
             if (kind == Kind.GHOST) { g.setPaint(new GradientPaint(0, 0, top, 0, h, bot)); g.fill(shape); }
             else {
                 g.setPaint(Tex.paint(kind == Kind.PRIMARY ? Tex.Kind.GOLD : kind == Kind.DANGER ? Tex.Kind.LEATHER : Tex.Kind.LEATHER)); g.fill(shape);
                 if (kind == Kind.DANGER) { g.setColor(new Color(150, 40, 34, 170)); g.fill(shape); }
-                g.setPaint(new GradientPaint(0, 0, new Color(255, 240, 210, hover && on ? 70 : 34), 0, h, new Color(0, 0, 0, down ? 40 : 100))); g.fill(shape);
+                g.setPaint(new GradientPaint(0, 0, new Color(255, 240, 210, (int) (34 + 40 * (on ? hoverT : 0))), 0, h, new Color(0, 0, 0, down ? 40 : 100))); g.fill(shape);
             }
             g.setColor(edge);
             g.setStroke(new BasicStroke(1.2f));

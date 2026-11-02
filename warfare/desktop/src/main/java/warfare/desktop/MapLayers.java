@@ -222,7 +222,7 @@ final class MapLayers {
 
         // borders
         g.transform(worldToImage(r));
-        strokeArcs(g, r, view, 4, new Color(255, 255, 255, 36), 0.7);
+        strokeArcs(g, r, view, 4, new Color(255, 255, 255, r.zoom < 1.6 ? 22 : 34), 0.7);
         strokeArcs(g, r, view, 3, new Color(255, 255, 255, 105), 0.8);
         strokeArcs(g, r, view, 1, new Color(70, 52, 36, 140), 1.2);
         strokeArcs(g, r, view, 2, new Color(34, 22, 14, 238), 1.6);

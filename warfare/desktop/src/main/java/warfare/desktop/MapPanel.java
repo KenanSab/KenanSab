@@ -11,6 +11,7 @@ import java.awt.image.BufferedImage;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -552,13 +553,14 @@ final class MapPanel extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        drawVignette(g);
         hits.clear();
         drawHighlights(g); seg[2] += System.nanoTime() - tm; tm = System.nanoTime();
         drawLabels(g); seg[3] += System.nanoTime() - tm; tm = System.nanoTime();
         drawCities(g); seg[4] += System.nanoTime() - tm; tm = System.nanoTime();
         drawCapitals(g);
         drawPath(g);
-        drawArmies(g); seg[5] += System.nanoTime() - tm; tm = System.nanoTime();
+        drawArmies(g); drawNukes(g); seg[5] += System.nanoTime() - tm; tm = System.nanoTime();
         if (mode == Mode.INTEL) drawLegend(g);
         drawControls(g);
         drawTooltip(g);
@@ -580,6 +582,19 @@ final class MapPanel extends JPanel {
         return new Point2D.Double(pi.cx * zoom + ox, pi.cy * zoom + oy);
     }
 
+    /** Darkens the screen edges (and the strip under the HUD) so the interface sits on the map instead of floating over it. */
+    private void drawVignette(Graphics2D g) {
+        int W = getWidth(), H = getHeight();
+        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 150), 0, 120, new Color(4, 8, 14, 0)));
+        g.fillRect(0, 0, W, 120);
+        g.setPaint(new GradientPaint(0, H - 150, new Color(4, 8, 14, 0), 0, H, new Color(4, 8, 14, 140)));
+        g.fillRect(0, H - 150, W, 150);
+        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 90), 100, 0, new Color(4, 8, 14, 0)));
+        g.fillRect(0, 120, 100, Math.max(0, H - 270));
+        g.setPaint(new GradientPaint(W - 100, 0, new Color(4, 8, 14, 0), W, 0, new Color(4, 8, 14, 90)));
+        g.fillRect(W - 100, 120, 100, Math.max(0, H - 270));
+    }
+
     private void drawHighlights(Graphics2D g) {
         AffineTransform old = g.getTransform();
         g.translate(ox, oy); g.scale(zoom, zoom);
@@ -599,7 +614,7 @@ final class MapPanel extends JPanel {
         if (zoom < 4.5) return;
         Intel in = gs.intelOf(gs.player);
         Font f = Fonts.label(11.5f);
-        Color fill = new Color(255, 255, 255, 205), halo = new Color(20, 15, 11, 190);
+        Color fill = new Color(255, 255, 255, 150), halo = new Color(20, 15, 11, 150);
         for (WorldData.ProvinceInfo p : w.provinces) {
             if (p.sea || shapes.bounds[p.id].width * zoom < 56) continue;
             double sx = p.cx * zoom + ox, sy = p.cy * zoom + oy;
@@ -847,6 +862,7 @@ final class MapPanel extends JPanel {
         if (inBattle) {
             double pulse = 0.5 + 0.5 * Math.sin(System.currentTimeMillis() / 140.0);
             g.drawImage(Sprites.glow(34, 0xFF4632, (int) (110 + 90 * pulse)), x + spr.getWidth() / 2 - 34, y + 10 - 34 + fh / 2, null);
+            drawBattleSparks(g, x + spr.getWidth() / 2.0, y + 6, armyId);
         }
         if (selected) {
             g.setColor(new Color(255, 230, 90, 190));
@@ -856,6 +872,101 @@ final class MapPanel extends JPanel {
         g.drawImage(spr, x, y, null);
         g.setComposite(old);
         hits.add(new Hit(new Rectangle(x + (spr.getWidth() - fw) / 2, y + 5, fw, fh + ph), armyId, own));
+    }
+
+    // ------------------------------------------------------------------ battle and nuclear effects
+    private record Blast(int province, long start) {}
+    private final java.util.IdentityHashMap<int[], Long> missileSeen = new java.util.IdentityHashMap<>();
+    private final List<int[]> lastMissiles = new ArrayList<>();
+    private final List<Blast> blasts = new ArrayList<>();
+
+    /** Flickering sparks and smoke above a fighting stack. */
+    private void drawBattleSparks(Graphics2D g, double cx, double cy, int seed) {
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 7; i++) {
+            double life = ((now + i * 211 + seed * 97) % 1300) / 1300.0;
+            double ph = i * 2.399 + seed;
+            double x = cx + Math.sin(ph * 3.1) * 14 + Math.sin(life * 6 + ph) * 4, y = cy - life * 34;
+            float a = (float) Math.max(0, 1 - life);
+            if (i % 3 == 0) {
+                g.setColor(new Color(40, 34, 30, (int) (110 * a)));
+                double r = 4 + life * 9;
+                g.fill(new Ellipse2D.Double(x - r, y - r - 6, 2 * r, 2 * r));
+            } else {
+                g.setColor(new Color(255, (int) (150 + 90 * (1 - life)), 40, (int) (230 * a)));
+                g.fill(new Ellipse2D.Double(x - 1.5, y - 1.5, 3, 3));
+            }
+        }
+    }
+
+    /** Screenshot hooks: pretend a missile has been flying for ageMs, or that a warhead exploded ageMs ago. */
+    private long debugNow;   // when non-zero the nuclear effects run on this frozen clock
+    void debugMissileAge(long ageMs) { debugNow = 1_000_000L; for (int[] mi : gs.nukesInFlight) missileSeen.put(mi, debugNow - ageMs); }
+    void debugBlast(int province, long ageMs) { debugNow = 1_000_000L; blasts.add(new Blast(province, debugNow - ageMs)); }
+
+    /** Missiles in flight arc across the map; when one disappears from the sky it detonates at its target. */
+    private void drawNukes(Graphics2D g) {
+        long now = debugNow > 0 ? debugNow : System.currentTimeMillis();
+        List<int[]> current = new ArrayList<>(gs.nukesInFlight);
+        for (int[] m : current) missileSeen.putIfAbsent(m, now);
+        for (int[] old : lastMissiles) {
+            boolean still = false;
+            for (int[] m : current) if (m == old) { still = true; break; }
+            if (!still) { blasts.add(new Blast(old[1], now)); missileSeen.remove(old); Audio.get().play(Synth.Sfx.CONFIRM); }
+        }
+        lastMissiles.clear(); lastMissiles.addAll(current);
+        for (int[] m : current) {
+            Point2D.Double from = screen(w.nations.get(m[0]).capital), to = screen(m[1]);
+            double t = Math.min(1, (now - missileSeen.get(m)) / 1500.0);
+            double dist = Math.hypot(to.x - from.x, to.y - from.y);
+            int steps = 26;
+            Path2D.Double trail = new Path2D.Double();
+            Point2D.Double head = from;
+            for (int i = 0; i <= steps * t; i++) {
+                double u = i / (double) steps;
+                double x = from.x + (to.x - from.x) * u, y = from.y + (to.y - from.y) * u - Math.sin(Math.PI * u) * dist * 0.22;
+                if (i == 0) trail.moveTo(x, y); else trail.lineTo(x, y);
+                head = new Point2D.Double(x, y);
+            }
+            Stroke old = g.getStroke();
+            g.setStroke(new BasicStroke(5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(255, 120, 40, 70)); g.draw(trail);
+            g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(255, 236, 190, 230)); g.draw(trail);
+            g.setStroke(old);
+            g.drawImage(Sprites.glow(18, 0xFFB050, 220), (int) head.x - 18, (int) head.y - 18, null);
+            // warning ring on the target
+            double pulse = 0.5 + 0.5 * Math.sin(now / 160.0);
+            g.setColor(new Color(255, 60, 40, (int) (120 + 110 * pulse)));
+            g.setStroke(new BasicStroke(2.2f));
+            double rr = 16 + 6 * pulse;
+            g.draw(new Ellipse2D.Double(to.x - rr, to.y - rr, 2 * rr, 2 * rr));
+            g.draw(new Line2D.Double(to.x - rr - 6, to.y, to.x + rr + 6, to.y));
+            g.draw(new Line2D.Double(to.x, to.y - rr - 6, to.x, to.y + rr + 6));
+            g.setStroke(old);
+        }
+        for (Iterator<Blast> it = blasts.iterator(); it.hasNext(); ) {
+            Blast b = it.next();
+            double t = (now - b.start()) / 3200.0;
+            if (t > 1) { it.remove(); continue; }
+            Point2D.Double c = screen(b.province());
+            double flash = Math.max(0, 1 - t * 5);
+            if (flash > 0) { g.setColor(new Color(255, 250, 235, (int) (150 * flash))); g.fillRect(0, 0, getWidth(), getHeight()); }
+            double ease = 1 - Math.pow(1 - t, 2.4);
+            double ring = 30 + 230 * ease;
+            Stroke old = g.getStroke();
+            g.setStroke(new BasicStroke((float) (10 * (1 - t) + 1.5)));
+            g.setColor(new Color(255, 220, 160, (int) (200 * (1 - t))));
+            g.draw(new Ellipse2D.Double(c.x - ring, c.y - ring, 2 * ring, 2 * ring));
+            g.setStroke(old);
+            double fr = (34 + 80 * Math.min(1, t * 2.0)) * (0.8 + zoom * 0.14);
+            g.setPaint(new RadialGradientPaint((float) c.x, (float) c.y, (float) fr, new float[]{0f, 0.45f, 1f},
+                    new Color[]{new Color(255, 248, 210, (int) (255 * Math.max(0, 1 - t * 0.95))), new Color(255, 140, 34, (int) (235 * Math.max(0, 1 - t * 0.9))), new Color(150, 36, 10, 0)}));
+            g.fill(new Ellipse2D.Double(c.x - fr, c.y - fr, 2 * fr, 2 * fr));
+            double sr = 18 + 70 * ease, sy = c.y - 20 - 70 * ease;
+            g.setColor(new Color(36, 30, 28, (int) (170 * Math.min(1, t * 3) * (1 - t))));
+            g.fill(new Ellipse2D.Double(c.x - sr, sy - sr * 0.8, 2 * sr, 1.6 * sr));
+        }
     }
 
     private void drawLegend(Graphics2D g) {

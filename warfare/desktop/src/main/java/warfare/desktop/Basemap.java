@@ -161,7 +161,7 @@ final class Basemap {
                 og = og * ripple + 4 * contour * near + 16 * caustic * near;
                 ob = ob * ripple + 5 * contour * near + 18 * caustic * near;
                 double cm = coast[i];
-                double foam = Math.exp(-Math.pow((cm - 0.27) / 0.11, 2)) * 0.14 + Math.exp(-Math.pow((cm - 0.08) / 0.05, 2)) * 0.16;
+                double foam = Math.exp(-Math.pow((cm - 0.42) / 0.07, 2)) * 0.20;
                 foam *= 0.6 + 0.8 * fbm(x / 9.0 + 500, y / 9.0, 2);
                 or += (225 - or) * foam; og += (240 - og) * foam; ob += (244 - ob) * foam;
                 out[i] = 0xFF000000 | (clamp(or * (1 - m) + lr * m) << 16) | (clamp(og * (1 - m) + lg * m) << 8) | clamp(ob * (1 - m) + lb * m);
@@ -191,7 +191,7 @@ final class Basemap {
                 int sx = Math.min(W - 1, x * 2), sy = Math.min(H - 1, y * 2);
                 double c = coast[sy * W + sx], land = Math.min(1, mask[sy * W + sx] * 1.3);
                 double n = 0.55 + 0.9 * fbm(x / 6.0 + 40, y / 6.0 + 9, 2);
-                double va = Math.exp(-Math.pow((c - 0.40) / 0.06, 2)) * (1 - land) * n, vb = Math.exp(-Math.pow((c - 0.25) / 0.075, 2)) * (1 - land) * n;
+                double va = Math.exp(-Math.pow((c - 0.455) / 0.03, 2)) * (1 - land) * n, vb = Math.exp(-Math.pow((c - 0.395) / 0.04, 2)) * (1 - land) * n;
                 ao[y * mw + x] = ((int) Math.max(0, Math.min(255, va * 235)) << 24) | 0xFFFFFF;
                 bo[y * mw + x] = ((int) Math.max(0, Math.min(255, vb * 200)) << 24) | 0xFFFFFF;
             }

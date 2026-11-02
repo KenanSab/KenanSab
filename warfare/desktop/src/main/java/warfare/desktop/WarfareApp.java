@@ -268,6 +268,11 @@ public final class WarfareApp {
                     }
                 }
             }
+            if (o.containsKey("nukefx")) {
+                int target = world.nations.get(world.nationByTag.getOrDefault(foeTag, me)).capital;
+                if (o.get("nukefx").equals("flight")) { gs.nukesInFlight.add(new int[]{me, target, gs.day + 1}); ui.map.debugMissileAge(850); }
+                else ui.map.debugBlast(target, 650);
+            }
             if (o.containsKey("hover")) {
                 java.awt.geom.Point2D.Double sp = ui.map.screenOf(fp >= 0 ? fp : world.nations.get(me).capital);
                 ui.map.dispatchEvent(new java.awt.event.MouseEvent(ui.map, java.awt.event.MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, (int) sp.x + 34, (int) sp.y + 40, 0, false));
