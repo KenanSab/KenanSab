@@ -264,24 +264,52 @@ final class SidePanels {
             };
             table = new JTable(model);
             table.setAutoCreateRowSorter(true);
+            table.setRowHeight(30);
+            table.setBackground(Ui.PANEL);
+            table.setSelectionBackground(Ui.CARD_HI);
+            table.setShowGrid(false);
+            table.setIntercellSpacing(new Dimension(0, 1));
+            table.setFont(Fonts.ui(13f));
+            table.getTableHeader().setFont(Fonts.label(13f));
+            table.getColumnModel().getColumn(0).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+                @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+                    JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
+                    int nat = rows.get(t.convertRowIndexToModel(row));
+                    l.setIcon(new ImageIcon(Assets.flag(gs.world.nations.get(nat), 24)));
+                    l.setIconTextGap(8);
+                    return l;
+                }
+            });
+            table.getColumnModel().getColumn(2).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+                @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+                    JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
+                    String s = String.valueOf(v);
+                    l.setForeground(s.equals("AT WAR") ? Ui.RED : s.startsWith("Ally") || s.startsWith("Bloc") ? Ui.GREEN : s.equals("Sanctioned") ? Ui.AMBER : Ui.MUTED);
+                    return l;
+                }
+            });
+            table.getColumnModel().getColumn(0).setPreferredWidth(150);
+            table.getColumnModel().getColumn(2).setPreferredWidth(95);
+            table.getColumnModel().getColumn(3).setPreferredWidth(190);
             add(new JScrollPane(table), BorderLayout.CENTER);
-            JPanel btn = new JPanel(new GridLayout(0, 2, 3, 3));
-            btn.add(action("Declare war", n -> gs.declareWar(gs.player, n)));
-            btn.add(action("Offer peace", n -> gs.offerPeace(gs.player, n)));
-            btn.add(action("Propose alliance", n -> gs.formAlliance(gs.player, n)));
-            btn.add(action("Dissolve alliance", n -> gs.breakAlliance(gs.player, n)));
-            btn.add(action("Toggle sanctions", n -> gs.toggleSanction(gs.player, n)));
-            btn.add(action("Buy oil (trade deal)", n -> gs.oilDeal(n, gs.player)));
-            btn.add(action("Send 30 aid", n -> gs.sendAid(gs.player, n, 30)));
-            btn.add(action("Station agent (25)", n -> gs.assignAgent(gs.player, n)));
-            JButton nuke = new JButton("LAUNCH NUKE at selected province");
-            nuke.setForeground(new Color(200, 30, 30));
-            nuke.addActionListener(e -> {
+            JPanel btn = new JPanel(new GridLayout(0, 2, 6, 6));
+            btn.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+            btn.add(action("Declare war", "battle", n -> gs.declareWar(gs.player, n)));
+            btn.add(action("Offer peace", "general", n -> gs.offerPeace(gs.player, n)));
+            btn.add(action("Propose alliance", "tab_diplo", n -> gs.formAlliance(gs.player, n)));
+            btn.add(action("Dissolve alliance", "split", n -> gs.breakAlliance(gs.player, n)));
+            btn.add(action("Toggle sanctions", "wall", n -> gs.toggleSanction(gs.player, n)));
+            btn.add(action("Buy oil", "oil", n -> gs.oilDeal(n, gs.player)));
+            btn.add(action("Send 30 aid", "money", n -> gs.sendAid(gs.player, n, 30)));
+            btn.add(action("Station agent (25)", "spy", n -> gs.assignAgent(gs.player, n)));
+            JButton nuke = Ui.button("LAUNCH NUKE", "nuke", () -> {
                 if (map.selProv < 0) { message(this, new GameState.Result(false, "Select a target province on the map.")); return; }
                 if (JOptionPane.showConfirmDialog(this, "Launch a nuclear missile at " + gs.prov(map.selProv).name + "? This cannot be undone.", "Nuclear launch", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION)
                     message(this, gs.launchNuke(gs.player, map.selProv));
                 refreshAll.run();
             });
+            nuke.setBackground(new Color(120, 34, 34));
+            nuke.setToolTipText("Targets the province selected on the map");
             btn.add(nuke);
             add(btn, BorderLayout.SOUTH);
             rebuild();
@@ -289,8 +317,9 @@ final class SidePanels {
 
         interface Act { GameState.Result run(int nation); }
 
-        JButton action(String label, Act a) {
-            JButton b = new JButton(label);
+        JButton action(String label, String icon, Act a) {
+            JButton b = Ui.button(label, icon, () -> {});
+            for (java.awt.event.ActionListener l : b.getActionListeners()) b.removeActionListener(l);
             b.addActionListener(e -> {
                 int r = table.getSelectedRow();
                 if (r < 0) { message(this, new GameState.Result(false, "Select a nation in the list.")); return; }

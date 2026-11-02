@@ -21,7 +21,9 @@ public final class WarfareApp {
     public static void main(String[] args) throws Exception {
         assets = findAssets(args);
         Fonts.load(assets);
+        Assets.init(assets);
         theme();
+        if (args.length >= 2 && args[0].equals("--picker")) { picker(args[1]); return; }
         if (args.length >= 2 && args[0].equals("--shot")) { System.setProperty("java.awt.headless", "true"); shot(args); return; }
         WorldData world = WorldData.load(assets);
         SwingUtilities.invokeLater(() -> {
@@ -70,18 +72,7 @@ public final class WarfareApp {
         throw new IllegalStateException("Cannot find assets/map. Pass --assets <dir>.");
     }
 
-    static int chooseNation(JFrame f, WorldData w) {
-        List<WorldData.NationInfo> list = new ArrayList<>(w.nations);
-        list.sort(Comparator.comparing(n -> n.name));
-        JComboBox<String> box = new JComboBox<>();
-        for (WorldData.NationInfo n : list) box.addItem(n.name);
-        box.setSelectedItem("France");
-        JPanel p = new JPanel(new BorderLayout(6, 6));
-        p.add(new JLabel("<html><b>WARFARE</b> - modern day, 1 November 2026<br>Choose your nation. Every country is playable.</html>"), BorderLayout.NORTH);
-        p.add(box, BorderLayout.CENTER);
-        JOptionPane.showMessageDialog(f, p, "New game", JOptionPane.PLAIN_MESSAGE);
-        return list.get(box.getSelectedIndex()).index;
-    }
+    static int chooseNation(JFrame f, WorldData w) { return NationPicker.pick(f, w); }
 
     static void start(JFrame f, WorldData world, int nation) {
         GameState gs = new GameState(world, nation, System.nanoTime());
@@ -121,6 +112,9 @@ public final class WarfareApp {
             ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, 3.2);
             if (args.length > 5) ui.map.setMode(MapPanel.Mode.valueOf(args[5]));
             ui.map.selProv = fp;
+            if (args.length > 6) ui.tabs.setSelectedIndex(Integer.parseInt(args[6]));
+            if (args.length > 7 && args[7].equals("army"))
+                for (Army a : gs.armies.values()) if (a.owner == me) { ui.map.selArmy = a.id; ui.map.selProv = a.province; break; }
             ui.refresh();
             layoutAll(ui);
             img[0] = new BufferedImage(1500, 900, BufferedImage.TYPE_INT_RGB);
@@ -130,6 +124,30 @@ public final class WarfareApp {
         });
         ImageIO.write(img[0], "png", new File(out));
         System.out.println("wrote " + out);
+    }
+
+    static void picker(String out) throws Exception {
+        System.clearProperty("java.awt.headless");
+        WorldData world = WorldData.load(assets);
+        SwingUtilities.invokeAndWait(() -> {
+            JFrame f = new JFrame("picker");
+            NationPicker p = new NationPicker(world);
+            f.setContentPane(p);
+            f.setSize(900, 580);
+            f.setVisible(true);
+            javax.swing.Timer t = new javax.swing.Timer(1500, e -> {
+                try {
+                    BufferedImage img = new BufferedImage(900, 580, BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g = img.createGraphics();
+                    f.getContentPane().paint(g);
+                    g.dispose();
+                    ImageIO.write(img, "png", new File(out));
+                    System.out.println("wrote " + out);
+                } catch (Exception ex) { ex.printStackTrace(); }
+                System.exit(0);
+            });
+            t.setRepeats(false); t.start();
+        });
     }
 
     static void layoutAll(Component c) {

@@ -49,7 +49,7 @@ public final class MapGenerator {
     static double latOf(double y) { return LAT_TOP - y * HDEG; }
 
     static final class Nation {
-        String tag, name, continent;
+        String tag, name, continent, iso2 = "";
         long pop; double gdp, labelLon, labelLat;
         int index;
         List<Path2D.Double> shapes = new ArrayList<>();
@@ -223,13 +223,17 @@ public final class MapGenerator {
                 double gdp = p.has("GDP_MD") && !p.get("GDP_MD").isJsonNull() ? p.get("GDP_MD").getAsDouble() : 0;
                 double lx = p.has("LABEL_X") && !p.get("LABEL_X").isJsonNull() ? p.get("LABEL_X").getAsDouble() : 0;
                 double ly = p.has("LABEL_Y") && !p.get("LABEL_Y").isJsonNull() ? p.get("LABEL_Y").getAsDouble() : 0;
+                String iso = str(p, "ISO_A2_EH");
+                if (iso.isEmpty() || iso.equals("-99")) iso = str(p, "ISO_A2");
+                if (iso.equals("-99")) iso = "";
                 Nation n = map.get(sov);
                 if (n == null) {
                     n = new Nation(); n.name = sovName; n.continent = continent; n.labelLon = lx; n.labelLat = ly; n.tag = sov;
                     map.put(sov, n);
                 }
                 n.pop += pop; n.gdp += gdp;
-                if (str(p, "ADMIN").equals(sovName)) { n.continent = continent; n.labelLon = lx; n.labelLat = ly; tagOf.put(sov, adm); }
+                if (n.iso2.isEmpty()) n.iso2 = iso;
+                if (str(p, "ADMIN").equals(sovName)) { if (!iso.isEmpty()) n.iso2 = iso; n.continent = continent; n.labelLon = lx; n.labelLat = ly; tagOf.put(sov, adm); }
                 pending.computeIfAbsent(sov, k -> new ArrayList<>()).add(new String[]{adm, str(p, "ADMIN")});
                 JsonObject geom = f.getAsJsonObject("geometry");
                 if (geom == null || geom.get("type").isJsonNull()) continue;
@@ -496,11 +500,11 @@ public final class MapGenerator {
         Map<String, String> blocs = blocs();
         int playable = 0;
         try (PrintWriter pw = new PrintWriter(out.resolve("nations.tsv").toFile(), StandardCharsets.UTF_8)) {
-            pw.println("tag\tname\tcontinent\tpopulation\tgdpMillions\tcapital\tbloc");
+            pw.println("tag\tname\tcontinent\tpopulation\tgdpMillions\tcapital\tbloc\tiso2");
             for (Nation n : nations) {
                 if (capital[n.index] < 0) continue;
                 playable++;
-                pw.printf(Locale.ROOT, "%s\t%s\t%s\t%d\t%.0f\t%d\t%s%n", n.tag, n.name, n.continent, n.pop, n.gdp, capital[n.index], blocs.getOrDefault(n.tag, "NONE"));
+                pw.printf(Locale.ROOT, "%s\t%s\t%s\t%d\t%.0f\t%d\t%s\t%s%n", n.tag, n.name, n.continent, n.pop, n.gdp, capital[n.index], blocs.getOrDefault(n.tag, "NONE"), n.iso2.toLowerCase());
             }
         }
         System.out.println("playable nations: " + playable);

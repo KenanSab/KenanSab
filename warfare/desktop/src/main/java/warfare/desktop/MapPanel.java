@@ -335,54 +335,54 @@ final class MapPanel extends JPanel {
             boolean own = a.owner == me;
             boolean allied = !own && a.owner >= 0 && gs.isAlly(me, a.owner) && in.quality[a.province] >= 2;
             if (!own && !allied) continue;
-            drawMarker(g, a.province, slot, NationColors.of(gs.nationTag(a.owner)), String.valueOf((int) Math.round(a.totalUnits())),
-                    a.id, own, 1f, a.battleId >= 0, false, !own);
+            drawMarker(g, a.province, slot, w.nations.get(a.owner), String.valueOf((int) Math.round(a.totalUnits())),
+                    a.id, own, 1f, a.battleId >= 0, false);
         }
         for (Intel.Sighting s : in.activeSightings(gs.day)) {
-            if (s.quality <= 1 && zoom < 3.0) continue;   // bare contacts only clutter the strategic view
+            if (s.quality <= 1 && zoom < 4.5) continue;   // bare contacts only clutter the strategic view
             double conf = Math.max(0.3, Intel.confidence(gs.day - s.day) * 1.1);
-            Color c = s.ownerKnown ? NationColors.of(gs.nationTag(s.owner)) : new Color(140, 144, 152);
+            WorldData.NationInfo ni = s.ownerKnown && s.owner >= 0 ? w.nations.get(s.owner) : null;
             String text = s.quality >= 3 ? String.valueOf((int) Math.round(Math.max(1, sum(s.composition))))
                     : s.quality == 2 ? "~" + (int) Math.max(1, Math.round(s.strengthEstimate / 11.0)) : "?";
-            drawMarker(g, s.province, slot, c, text, s.armyId, false, (float) Math.min(1.0, conf), false, gs.day != s.day, true);
+            drawMarker(g, s.province, slot, ni, text, s.armyId, false, (float) Math.min(1.0, conf), false, gs.day != s.day);
         }
     }
 
     private static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }
 
-    private void drawMarker(Graphics2D g, int prov, Map<Integer, Integer> slot, Color c, String text,
-                            int armyId, boolean own, float alpha, boolean inBattle, boolean stale, boolean foreign) {
+    /** Army marker: the nation's flag with a number pill underneath. Unknown owners get a plain grey flag. */
+    private void drawMarker(Graphics2D g, int prov, Map<Integer, Integer> slot, WorldData.NationInfo nation, String text,
+                            int armyId, boolean own, float alpha, boolean inBattle, boolean stale) {
         Point2D.Double s = screen(prov);
         if (s.x < -50 || s.y < -50 || s.x > getWidth() + 50 || s.y > getHeight() + 50) return;
-        double sz = Math.max(0.85, Math.min(1.35, 0.72 + zoom * 0.1));
-        int mw = (int) (32 * sz), mh = (int) (19 * sz);
+        double sz = Math.max(0.85, Math.min(1.35, 0.74 + zoom * 0.1));
+        int fw = (int) (27 * sz), fh = Math.round(fw * 0.75f), ph = (int) (14 * sz);
         int k = slot.merge(prov, 1, Integer::sum) - 1;
-        int x = (int) s.x - mw / 2 + k * (mw + 4), y = (int) s.y - mh / 2 - k * 2;
+        int x = (int) s.x - fw / 2 + k * (fw + 5), y = (int) s.y - fh / 2 - k * 2;
         Composite old = g.getComposite();
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-        RoundRectangle2D.Double body = new RoundRectangle2D.Double(x, y, mw, mh, 7, 7);
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fill(new RoundRectangle2D.Double(x + 1.5, y + 2.5, mw, mh, 7, 7));
-        Color top = c.brighter(), bot = new Color(Math.max(0, c.getRed() - 50), Math.max(0, c.getGreen() - 50), Math.max(0, c.getBlue() - 50));
-        g.setPaint(new GradientPaint(0, y, top, 0, y + mh, bot));
-        g.fill(body);
-        g.setPaint(null);
         boolean selected = armyId == selArmy;
-        if (inBattle) { g.setColor(new Color(255, 70, 50, 120)); g.setStroke(new BasicStroke(5f)); g.draw(body); }
-        if (selected) { g.setColor(new Color(255, 230, 90, 140)); g.setStroke(new BasicStroke(5f)); g.draw(body); }
-        g.setStroke(stale && foreign ? new BasicStroke(1.4f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0) : new BasicStroke(own ? 2f : 1.4f));
-        g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(20, 24, 32, 220));
-        g.draw(body);
-        Font f = Fonts.label((float) (13.5 * sz)).deriveFont(Font.BOLD);
+        g.setColor(new Color(0, 0, 0, 100));
+        g.fill(new RoundRectangle2D.Double(x + 1.5, y + 3, fw, fh + ph / 2.0, 6, 6));
+        if (inBattle) { g.setColor(new Color(255, 70, 50, 150)); g.setStroke(new BasicStroke(6f)); g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6)); }
+        if (selected) { g.setColor(new Color(255, 230, 90, 170)); g.setStroke(new BasicStroke(6f)); g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6)); }
+        g.drawImage(Assets.flag(nation, fw), x, y, null);
+        g.setStroke(stale && !own ? new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0) : new BasicStroke(own ? 2f : 1.2f));
+        g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(14, 18, 26, 230));
+        g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6));
+        Font f = Fonts.label((float) (12.5 * sz)).deriveFont(Font.BOLD);
         g.setFont(f);
         FontMetrics fm = g.getFontMetrics();
-        int tx = x + (mw - fm.stringWidth(text)) / 2, ty = y + (mh + fm.getAscent()) / 2 - 2;
-        g.setColor(new Color(0, 0, 0, 160));
-        g.drawString(text, tx + 1, ty + 1);
+        int pw = Math.max(fw - 8, fm.stringWidth(text) + 12), px = x + (fw - pw) / 2, py = y + fh - 2;
+        g.setColor(new Color(10, 14, 22, 235));
+        g.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
+        g.setColor(own ? new Color(255, 255, 255, 200) : new Color(255, 255, 255, 90));
+        g.setStroke(new BasicStroke(1f));
+        g.draw(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
         g.setColor(Color.WHITE);
-        g.drawString(text, tx, ty);
+        g.drawString(text, px + (pw - fm.stringWidth(text)) / 2, py + (ph + fm.getAscent()) / 2 - 2);
         g.setComposite(old);
-        hits.add(new Hit(new Rectangle(x, y, mw, mh), armyId, own));
+        hits.add(new Hit(new Rectangle(x, y, fw, fh + ph), armyId, own));
     }
 
     private void drawLegend(Graphics2D g) {

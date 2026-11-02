@@ -1,0 +1,3 @@
+Icons: game-icons.net by Lorc and Delapouite, licensed CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
+Source: https://github.com/game-icons/icons
+Flags (assets/flags): flag-icons by Panayiotis Lipiridis, MIT licence. Source: https://github.com/lipis/flag-icons

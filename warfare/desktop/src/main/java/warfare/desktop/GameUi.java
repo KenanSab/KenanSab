@@ -14,14 +14,13 @@ final class GameUi extends JPanel {
     final GameState gs;
     final JFrame frame;
     final MapPanel map;
-    final SidePanels.Selection selection;
-    final SidePanels.Production production;
+    final SelectionPanel selection;
+    final ProductionPanel production;
     final SidePanels.Diplomacy diplomacy;
     final SidePanels.Log log;
     final JTabbedPane tabs = new JTabbedPane();
-    final JLabel dateLabel = new JLabel(), resources = new JLabel(), newsBar = new JLabel(" ");
-    final JButton[] speedButtons = new JButton[5];
-    final JButton pauseButton = new JButton("Pause");
+    final JLabel newsBar = new JLabel(" ");
+    final TopBar topBar;
     final Timer timer;
     boolean paused = true;
     int speed = 2;
@@ -32,23 +31,30 @@ final class GameUi extends JPanel {
         this.gs = gs; this.frame = frame;
         map = new MapPanel(gs, WarfareApp.assets);
         Runnable refresh = this::refresh;
-        selection = new SidePanels.Selection(gs, map, refresh);
-        production = new SidePanels.Production(gs, map, refresh);
+        selection = new SelectionPanel(gs, map, refresh);
+        production = new ProductionPanel(gs, map, refresh);
         diplomacy = new SidePanels.Diplomacy(gs, map, refresh);
         log = new SidePanels.Log(gs);
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
-        tabs.addTab("Selection", selection);
-        tabs.addTab("Production", production);
-        tabs.addTab("Diplomacy", diplomacy);
-        tabs.addTab("Reports", log);
-        tabs.setPreferredSize(new Dimension(380, 100));
-        add(topBar(), BorderLayout.NORTH);
+        tabs.addTab("Selection", Assets.swingIcon("tab_select", 18, Ui.TEXT), selection);
+        tabs.addTab("Production", Assets.swingIcon("tab_prod", 18, Ui.TEXT), production);
+        tabs.addTab("Diplomacy", Assets.swingIcon("tab_diplo", 18, Ui.TEXT), diplomacy);
+        tabs.addTab("Reports", Assets.swingIcon("tab_reports", 18, Ui.TEXT), log);
+        tabs.setPreferredSize(new Dimension(410, 100));
+        tabs.setFont(Fonts.label(15f));
+        topBar = new TopBar(gs, () -> setPaused(!paused), this::setSpeed);
+        add(topBar, BorderLayout.NORTH);
         add(map, BorderLayout.CENTER);
         add(tabs, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout());
+        south.setBackground(Ui.BG);
+        newsBar.setFont(Fonts.ui(13f));
+        newsBar.setForeground(Ui.TEXT);
+        newsBar.setIcon(Assets.swingIcon("tab_reports", 16, Ui.MUTED));
+        newsBar.setIconTextGap(8);
         south.add(newsBar, BorderLayout.CENTER);
-        south.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        south.setBorder(BorderFactory.createEmptyBorder(5, 12, 5, 12));
         add(south, BorderLayout.SOUTH);
         timer = new Timer(DAY_MS(), e -> tick());
         timer.setRepeats(true);
@@ -60,25 +66,6 @@ final class GameUi extends JPanel {
 
     void focusStart() {
         SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, 3.5); map.selProv = gs.world.nations.get(gs.player).capital; refresh(); });
-    }
-
-    JComponent topBar() {
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        bar.setBackground(new Color(24, 30, 42));
-        dateLabel.setForeground(Color.WHITE); dateLabel.setFont(dateLabel.getFont().deriveFont(Font.BOLD, 14f));
-        resources.setForeground(new Color(220, 228, 240));
-        bar.add(dateLabel);
-        pauseButton.addActionListener(e -> setPaused(!paused));
-        bar.add(pauseButton);
-        for (int i = 0; i < 5; i++) {
-            final int s = i + 1;
-            speedButtons[i] = new JButton(String.valueOf(s));
-            speedButtons[i].setMargin(new Insets(2, 8, 2, 8));
-            speedButtons[i].addActionListener(e -> setSpeed(s));
-            bar.add(speedButtons[i]);
-        }
-        bar.add(resources);
-        return bar;
     }
 
     void bindKeys() {
@@ -159,14 +146,7 @@ final class GameUi extends JPanel {
     static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }
 
     void refresh() {
-        NationState s = gs.ns[gs.player];
-        dateLabel.setText(gs.date() + "  |  " + gs.nationName(gs.player));
-        pauseButton.setText(paused ? "Play" : "Pause");
-        for (int i = 0; i < 5; i++) speedButtons[i].setFont(speedButtons[i].getFont().deriveFont(i + 1 == speed && !paused ? Font.BOLD : Font.PLAIN));
-        resources.setText(String.format("<html>Money <b>%.0f</b> (%+.1f)  |  Manpower <b>%.0f</b>  |  Industry <b>%d</b>  |  Oil <b>%.0f</b> (%+.2f)  |  Stability <b>%.0f%%</b>  |  War weariness %.0f%%%s</html>",
-                s.money, s.lastIncome, s.manpower, gs.productionCapacity(gs.player), s.oil, s.lastOilDelta, s.stability, s.warWeariness,
-                s.nukes > 0 ? "  |  Nukes <b>" + s.nukes + "</b>" : ""));
-        resources.setToolTipText("Money, manpower (thousands), industry slots, oil, stability");
+        topBar.update(paused, speed);
         int n = gs.news.size();
         newsBar.setText(n == 0 ? " " : gs.news.get(n - 1));
         selection.update();
