@@ -141,7 +141,7 @@ final class GameUi extends JPanel {
             Graphics2D g = (Graphics2D) g0.create();
             Wf.quality(g);
             int w = getWidth(), h = getHeight();
-            g.setColor(new Color(10, 16, 28, 215));
+            g.setColor(new Color(24, 19, 14, 215));
             g.fill(new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 16, 16));
             g.setColor(new Color(255, 255, 255, 36));
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 2, h - 2, 16, 16));

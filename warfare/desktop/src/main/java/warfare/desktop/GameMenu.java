@@ -119,7 +119,7 @@ final class GameMenu {
             JPanel text = Ui.column();
             text.add(Ui.label(a.title(), 14.5f, got ? Ui.TEXT : Ui.MUTED));
             text.add(Ui.label(a.description(), 12.5f, Ui.MUTED));
-            c.add(Ui.row(Ui.imageLabel(Assets.icon(a.icon(), 30, got ? Ui.GOLD : new Color(90, 100, 120))), Ui.gap(12, 0), text), BorderLayout.CENTER);
+            c.add(Ui.row(Ui.imageLabel(Assets.icon(a.icon(), 30, got ? Ui.GOLD : new Color(129, 104, 82))), Ui.gap(12, 0), text), BorderLayout.CENTER);
             col.add(c); col.add(Ui.gap(0, 5));
         }
         return Modals.card("Achievements", "trophy", Wf.scroll(col), 540, 640, () -> ui.modals.pop());

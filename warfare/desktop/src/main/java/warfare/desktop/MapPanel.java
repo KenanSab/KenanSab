@@ -84,7 +84,7 @@ final class MapPanel extends JPanel {
             int w = 330, h = 62, x = getWidth() - w - 14;
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
-            g.setColor(new Color(10, 16, 28, 235));
+            g.setColor(new Color(24, 19, 14, 235));
             g.fillRoundRect(x, y, w, h, 16, 16);
             g.setColor(new Color(236, 192, 92, 200));
             g.setStroke(new BasicStroke(1.6f));
@@ -106,7 +106,7 @@ final class MapPanel extends JPanel {
 
     MapPanel(GameState gs, Path mapDir) {
         this.gs = gs; this.w = gs.world;
-        setBackground(new Color(10, 24, 46));
+        setBackground(new Color(35, 27, 21));
         shapes = WarfareApp.shapes(w);
         basemap = WarfareApp.basemap(w);
         fillArgb = new int[w.provinces.size()];
@@ -293,10 +293,10 @@ final class MapPanel extends JPanel {
 
     private void drawArcPasses(Graphics2D g, Rectangle2D worldView) {
         if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 34), 0.8);
-        if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(14, 18, 26, 105), 0.9);
+        if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(26, 20, 15, 105), 0.9);
         strokeArcs(g, worldView, 1, new Color(150, 196, 236, 55), 5.0);
-        strokeArcs(g, worldView, 2, new Color(8, 10, 16, 215), 1.7);
-        strokeArcs(g, worldView, 1, new Color(6, 14, 28, 230), 1.35);
+        strokeArcs(g, worldView, 2, new Color(16, 12, 9, 215), 1.7);
+        strokeArcs(g, worldView, 1, new Color(22, 17, 12, 230), 1.35);
     }
 
     private void renderLayers() {
@@ -456,7 +456,7 @@ final class MapPanel extends JPanel {
                 if (size < 9) continue;
                 double sx = l.cx * zoom + ox, sy = l.cy * zoom + oy;
                 if (sx < -200 || sy < -50 || sx > getWidth() + 200 || sy > getHeight() + 50) continue;
-                drawTracked(g, l.text, sx, sy, (float) size, size * 0.14, new Color(255, 255, 255, (int) (225 * fade)), new Color(6, 12, 24, (int) (180 * fade)));
+                drawTracked(g, l.text, sx, sy, (float) size, size * 0.14, new Color(255, 255, 255, (int) (225 * fade)), new Color(20, 15, 11, (int) (180 * fade)));
             }
         }
         if (zoom >= 4.5) {
@@ -467,7 +467,7 @@ final class MapPanel extends JPanel {
                 String name = p.name;
                 int ko = gs.intelOf(gs.player).knownOwner[p.id];
                 if (ko < 0) continue;
-                drawTracked(g, name.toUpperCase(), sx, sy + 12, 11.5f, 0.8, new Color(255, 255, 255, 190), new Color(6, 12, 24, 170));
+                drawTracked(g, name.toUpperCase(), sx, sy + 12, 11.5f, 0.8, new Color(255, 255, 255, 190), new Color(20, 15, 11, 170));
             }
         }
     }
@@ -541,7 +541,7 @@ final class MapPanel extends JPanel {
             g.setColor(lost ? new Color(200, 60, 52) : mine ? new Color(255, 214, 90) : new Color(245, 245, 250));
             g.fill(star);
             g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setColor(new Color(10, 14, 24, 235));
+            g.setColor(new Color(22, 17, 12, 235));
             g.draw(star);
             capRects.add(new Rectangle((int) (s.x - r - 5), (int) (cy - r - 5), (int) (2 * r + 10), (int) (2 * r + 10)));
             capNations.add(n.index);
@@ -607,13 +607,13 @@ final class MapPanel extends JPanel {
         if (selected) { g.setColor(new Color(255, 230, 90, 170)); g.setStroke(new BasicStroke(6f)); g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6)); }
         g.drawImage(Assets.flag(nation, fw), x, y, null);
         g.setStroke(stale && !own ? new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0) : new BasicStroke(own ? 2f : 1.2f));
-        g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(14, 18, 26, 230));
+        g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(26, 20, 15, 230));
         g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6));
         Font f = Fonts.labelBold((float) (12.5 * sz));
         g.setFont(f);
         FontMetrics fm = g.getFontMetrics();
         int pw = Math.max(fw - 8, fm.stringWidth(text) + 12), px = x + (fw - pw) / 2, py = y + fh - 2;
-        g.setColor(new Color(10, 14, 22, 235));
+        g.setColor(new Color(21, 16, 12, 235));
         g.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
         g.setColor(own ? new Color(255, 255, 255, 200) : new Color(255, 255, 255, 90));
         g.setStroke(new BasicStroke(1f));
@@ -629,7 +629,7 @@ final class MapPanel extends JPanel {
         g.setFont(Fonts.label(13f));
         FontMetrics fm = g.getFontMetrics();
         int wd = fm.stringWidth(t) + 24;
-        g.setColor(new Color(8, 14, 26, 190));
+        g.setColor(new Color(22, 17, 12, 190));
         g.fillRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
         g.setColor(new Color(255, 255, 255, 40));
         g.drawRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
@@ -722,7 +722,7 @@ final class MapPanel extends JPanel {
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
         g.setColor(new Color(0, 0, 0, 90));
         g.fillRoundRect(x0 + 2, y0 + 3, total, bh + 12, 22, 22);
-        g.setColor(new Color(10, 16, 28, 228));
+        g.setColor(new Color(24, 19, 14, 228));
         g.fillRoundRect(x0, y0 - 2, total, bh + 12, 22, 22);
         g.setColor(new Color(255, 255, 255, 36));
         g.setStroke(new BasicStroke(1f));
@@ -747,7 +747,7 @@ final class MapPanel extends JPanel {
         Rectangle[] rs = {zoomInRect, zoomOutRect, homeRect};
         for (int i = 0; i < 3; i++) {
             Rectangle r = rs[i];
-            g.setColor(new Color(10, 16, 28, 228));
+            g.setColor(new Color(24, 19, 14, 228));
             g.fillRoundRect(r.x, r.y, r.width, r.height, 14, 14);
             g.setColor(hoverOverlay == 10 + i ? new Color(255, 255, 255, 50) : new Color(255, 255, 255, 24));
             g.drawRoundRect(r.x, r.y, r.width, r.height, 14, 14);
@@ -778,7 +778,7 @@ final class MapPanel extends JPanel {
         int x = Math.min(mouse.x + 18, getWidth() - wd - 8), y = Math.min(mouse.y + 20, getHeight() - h - 8);
         g.setColor(new Color(0, 0, 0, 100));
         g.fillRoundRect(x + 2, y + 3, wd, h, 14, 14);
-        g.setColor(new Color(10, 16, 28, 238));
+        g.setColor(new Color(24, 19, 14, 238));
         g.fillRoundRect(x, y, wd, h, 14, 14);
         g.setColor(new Color(255, 255, 255, 40));
         g.drawRoundRect(x, y, wd, h, 14, 14);

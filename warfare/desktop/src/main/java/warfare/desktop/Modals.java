@@ -55,7 +55,7 @@ final class Modals extends JPanel {
     @Override protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0.create();
         g.setPaint(new RadialGradientPaint(getWidth() / 2f, getHeight() / 2f, Math.max(getWidth(), getHeight()) * 0.7f,
-                new float[]{0f, 1f}, new Color[]{new Color(4, 8, 16, 150), new Color(2, 4, 10, 215)}));
+                new float[]{0f, 1f}, new Color[]{new Color(14, 10, 7, 150), new Color(9, 6, 4, 215)}));
         g.fillRect(0, 0, getWidth(), getHeight());
         g.dispose();
     }

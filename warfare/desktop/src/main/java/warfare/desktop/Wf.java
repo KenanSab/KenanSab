@@ -18,7 +18,7 @@ import java.util.function.IntConsumer;
 final class Wf {
     private Wf() {}
 
-    static final Color GOLD = new Color(236, 192, 92), GOLD_DARK = new Color(188, 142, 48), INK = new Color(10, 14, 24);
+    static final Color GOLD = new Color(236, 192, 92), GOLD_DARK = new Color(188, 142, 48), INK = new Color(22, 17, 12);
 
     static void quality(Graphics2D g) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -71,7 +71,7 @@ final class Wf {
                 case PRIMARY -> { top = new Color(240, 202, 106); bot = new Color(196, 150, 54); edge = new Color(255, 232, 160, 200); text = INK; }
                 case DANGER -> { top = new Color(150, 52, 46); bot = new Color(110, 34, 32); edge = new Color(255, 120, 100, 120); text = Color.WHITE; }
                 case GHOST -> { top = new Color(255, 255, 255, 10); bot = new Color(255, 255, 255, 4); edge = new Color(255, 255, 255, 30); text = Ui.TEXT; }
-                default -> { top = new Color(44, 58, 86); bot = new Color(30, 40, 62); edge = new Color(255, 255, 255, 38); text = Ui.TEXT; }
+                default -> { top = new Color(79, 63, 50); bot = new Color(56, 45, 35); edge = new Color(255, 255, 255, 38); text = Ui.TEXT; }
             }
             if (hover && on) { top = brighter(top, 1.18); bot = brighter(bot, 1.18); if (kind != Kind.PRIMARY) edge = new Color(236, 192, 92, 190); }
             if (down && on) { top = brighter(top, 0.82); bot = brighter(bot, 0.82); }
@@ -330,7 +330,7 @@ final class Wf {
             int w = getWidth(), h = getHeight();
             g.setColor(new Color(0, 0, 0, 80));
             g.fill(new RoundRectangle2D.Float(3, 5, w - 4, h - 4, 20, 20));
-            g.setPaint(new GradientPaint(0, 0, new Color(20, 28, 46, 250), 0, h, new Color(11, 16, 28, 252)));
+            g.setPaint(new GradientPaint(0, 0, new Color(41, 32, 25, 250), 0, h, new Color(25, 19, 14, 252)));
             g.fill(new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 20, 20));
             g.setColor(new Color(255, 255, 255, 36));
             g.setStroke(new BasicStroke(1.2f));

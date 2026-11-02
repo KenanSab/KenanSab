@@ -72,7 +72,7 @@ final class Tutorial {
         card = new Rectangle(x, y, w, h);
         g.setColor(new Color(0, 0, 0, 90));
         g.fill(new RoundRectangle2D.Float(x + 3, y + 5, w, h, 18, 18));
-        g.setColor(new Color(12, 20, 36, 240));
+        g.setColor(new Color(30, 23, 18, 240));
         g.fill(new RoundRectangle2D.Float(x, y, w, h, 18, 18));
         g.setColor(new Color(92, 162, 255, 200));
         g.setStroke(new BasicStroke(1.6f));

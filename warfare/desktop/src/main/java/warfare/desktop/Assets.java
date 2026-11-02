@@ -61,7 +61,7 @@ final class Assets {
                 try { new FlatSVGIcon(f).derive(w, h).paintIcon(null, g, 0, 0); drawn = true; } catch (Exception ignored) {}
             }
             if (!drawn) {
-                g.setPaint(new GradientPaint(0, 0, new Color(96, 104, 120), 0, h, new Color(60, 66, 80)));
+                g.setPaint(new GradientPaint(0, 0, new Color(133, 107, 85), 0, h, new Color(86, 69, 54)));
                 g.fillRect(0, 0, w, h);
             }
             g.setClip(null);

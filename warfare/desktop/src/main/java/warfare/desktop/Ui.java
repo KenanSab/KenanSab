@@ -10,9 +10,9 @@ import java.awt.geom.RoundRectangle2D;
 final class Ui {
     private Ui() {}
 
-    static final Color BG = new Color(15, 20, 31), PANEL = new Color(21, 28, 43), CARD = new Color(30, 40, 60), CARD_HI = new Color(40, 54, 80),
-            ACCENT = new Color(92, 162, 255), GOLD = new Color(236, 192, 92), GREEN = new Color(96, 204, 134), RED = new Color(232, 90, 78),
-            AMBER = new Color(240, 170, 70), TEXT = new Color(228, 234, 246), MUTED = new Color(146, 158, 182), LINE = new Color(255, 255, 255, 28);
+    static final Color BG = new Color(29, 23, 17), PANEL = new Color(40, 31, 24), CARD = new Color(55, 44, 34), CARD_HI = new Color(73, 59, 46),
+            ACCENT = new Color(226, 186, 110), GOLD = new Color(236, 192, 92), GREEN = new Color(96, 204, 134), RED = new Color(232, 90, 78),
+            AMBER = new Color(240, 170, 70), TEXT = new Color(242, 236, 222), MUTED = new Color(176, 166, 150), LINE = new Color(255, 255, 255, 28);
 
     static JLabel label(String text, float size, Color c) {
         JLabel l = new JLabel(text);

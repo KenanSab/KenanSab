@@ -60,7 +60,7 @@ final class Rail extends JPanel {
             boolean on = items.get(active) == this;
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(3, 5, w - 4, h - 6, 16, 16));
-            g.setPaint(on ? new GradientPaint(0, 0, new Color(44, 58, 90, 245), 0, h, new Color(28, 38, 62, 245)) : new GradientPaint(0, 0, new Color(24, 33, 54, 238), 0, h, new Color(12, 18, 30, 242)));
+            g.setPaint(on ? new GradientPaint(0, 0, new Color(81, 65, 51, 245), 0, h, new Color(55, 43, 34, 245)) : new GradientPaint(0, 0, new Color(48, 38, 29, 238), 0, h, new Color(27, 21, 16, 242)));
             g.fill(new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 16, 16));
             g.setColor(on ? new Color(236, 192, 92, 220) : hover ? new Color(255, 255, 255, 90) : new Color(255, 255, 255, 38));
             g.setStroke(new BasicStroke(on ? 1.8f : 1.2f));

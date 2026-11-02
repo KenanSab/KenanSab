@@ -201,7 +201,7 @@ final class SelectionPanel extends JPanel {
     private JComponent tacticCard(String icon, String name, String desc, String beats, boolean active, Runnable r) {
         Ui.Card c = new Ui.Card(new BorderLayout());
         c.setBorder(BorderFactory.createEmptyBorder(7, 10, 7, 10));
-        if (active) { c.edge = new Color(Ui.ACCENT.getRed(), Ui.ACCENT.getGreen(), Ui.ACCENT.getBlue(), 230); c.fill = new Color(36, 58, 94); }
+        if (active) { c.edge = new Color(Ui.ACCENT.getRed(), Ui.ACCENT.getGreen(), Ui.ACCENT.getBlue(), 230); c.fill = new Color(79, 63, 50); }
         JPanel text = Ui.column();
         text.add(Ui.label(name + (active ? "   - ACTIVE" : ""), 14.5f, active ? Ui.ACCENT : Ui.TEXT));
         text.add(Ui.label("<html><div style='width:215px'>" + SidePanels.esc(desc) + "</div></html>", 12f, Ui.MUTED));

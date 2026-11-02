@@ -86,7 +86,7 @@ final class StartScreen extends JPanel {
             @Override protected void paintComponent(Graphics g0) {
                 Graphics2D g = (Graphics2D) g0.create();
                 Wf.quality(g);
-                g.setPaint(new GradientPaint(0, 0, new Color(22, 31, 50, 232), 0, getHeight(), new Color(11, 16, 28, 240)));
+                g.setPaint(new GradientPaint(0, 0, new Color(44, 35, 27, 232), 0, getHeight(), new Color(25, 19, 14, 240)));
                 g.fill(new RoundRectangle2D.Float(0, 0, getWidth() - 1, getHeight() - 1, 24, 24));
                 g.setColor(new Color(255, 255, 255, 40));
                 g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 2, getHeight() - 2, 24, 24));
@@ -146,7 +146,7 @@ final class StartScreen extends JPanel {
         double scale = Math.max(w / (double) backdrop.getWidth(null), h / (double) backdrop.getHeight(null));
         int iw = (int) (backdrop.getWidth(null) * scale), ih = (int) (backdrop.getHeight(null) * scale);
         g.drawImage(backdrop, (w - iw) / 2, (h - ih) / 2, iw, ih, null);
-        g.setPaint(new GradientPaint(0, 0, new Color(6, 10, 20, 230), w * 0.62f, 0, new Color(6, 10, 20, 120)));
+        g.setPaint(new GradientPaint(0, 0, new Color(17, 13, 9, 230), w * 0.62f, 0, new Color(17, 13, 9, 120)));
         g.fillRect(0, 0, w, h);
         g.setPaint(new GradientPaint(0, h * 0.7f, new Color(0, 0, 0, 0), 0, h, new Color(0, 0, 0, 160)));
         g.fillRect(0, 0, w, h);

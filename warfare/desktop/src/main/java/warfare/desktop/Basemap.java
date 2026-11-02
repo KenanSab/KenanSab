@@ -78,7 +78,7 @@ final class Basemap {
                 // ocean: deeper away from land, with a bright shelf close to the coast
                 double depth = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);
                 double ripple = 0.95 + 0.1 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
-                double or = (10 + 36 * depth) * ripple, og = (26 + 78 * depth) * ripple, ob = (50 + 92 * depth) * ripple;
+                double or = (58 + 52 * depth) * ripple, og = (104 + 66 * depth) * ripple, ob = (132 + 62 * depth) * ripple;
                 double m = Math.min(1, Math.max(0, mask[i]));
                 int r = clamp(or * (1 - m) + lr * m), g = clamp(og * (1 - m) + lg * m), b = clamp(ob * (1 - m) + lb * m);
                 out[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
