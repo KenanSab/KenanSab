@@ -20,7 +20,7 @@ final class ProductionPanel extends JPanel {
     private final JLabel[] countLabels = new JLabel[UnitType.N];
     private final JLabel total = Ui.label(" ", 13.5f, Ui.GOLD);
     private final JPanel dynamic = Ui.column();
-    private final JComboBox<Mission> mission = new JComboBox<>(Mission.values());
+    private final Wf.Segmented mission = new Wf.Segmented(new String[]{"Recon", "Air sup.", "Bomb", "CAS"}, 0, i -> {});
 
     ProductionPanel(GameState gs, MapPanel map, Runnable refreshAll) {
         super(new BorderLayout());
@@ -49,7 +49,7 @@ final class ProductionPanel extends JPanel {
         rc.add(col, BorderLayout.CENTER);
         content.add(rc);
         content.add(Ui.gap(0, 8));
-        JButton go = Ui.button("Recruit at selected province", "battle", () -> {
+        JButton go = Wf.primary("Recruit at selected province", "battle", () -> {
             if (map.selProv < 0) { SidePanels.message(this, new GameState.Result(false, "Select one of your provinces first.")); return; }
             double[] comp = new double[UnitType.N];
             for (int i = 0; i < comp.length; i++) comp[i] = counts[i];
@@ -80,34 +80,25 @@ final class ProductionPanel extends JPanel {
             for (AirWing w : gs.ns[gs.player].airWings) if (w.target < 0) { pick = w; break; }
             if (pick == null && !gs.ns[gs.player].airWings.isEmpty()) pick = gs.ns[gs.player].airWings.get(0);
             if (pick == null) { SidePanels.message(this, new GameState.Result(false, "No air wings.")); return; }
-            SidePanels.message(this, gs.setAirMission(gs.player, pick, (Mission) mission.getSelectedItem(), map.selProv));
+            SidePanels.message(this, gs.setAirMission(gs.player, pick, Mission.values()[mission.selected()], map.selProv));
             refreshAll.run();
         });
-        mission.setFont(Fonts.ui(13f));
         JPanel airBox = Ui.column();
         airBox.add(Ui.row(wing)); airBox.add(Ui.gap(0, 5));
-        airBox.add(Ui.row(mission, Ui.gap(6, 0), assign));
+        airBox.add(mission);
+        airBox.add(Ui.gap(0, 5));
+        airBox.add(Ui.row(assign));
         content.add(airBox);
 
         content.add(Ui.section("Queues"));
         content.add(dynamic);
-        JScrollPane sp = new JScrollPane(content);
-        sp.setBorder(null);
-        sp.getViewport().setBackground(Ui.PANEL);
-        sp.getVerticalScrollBar().setUnitIncrement(18);
+        setOpaque(false);
+        JScrollPane sp = Wf.scroll(content);
         add(sp, BorderLayout.CENTER);
         sum();
     }
 
-    private JButton step(String text, Runnable r) {
-        JButton b = new JButton(text);
-        b.setFont(Fonts.ui(15f).deriveFont(Font.BOLD));
-        b.setMargin(new Insets(0, 0, 0, 0));
-        b.setPreferredSize(new Dimension(26, 24));
-        b.setFocusable(false);
-        b.addActionListener(e -> r.run());
-        return b;
-    }
+    private JButton step(String text, Runnable r) { Wf.Button b = Wf.button(text, null, r); b.setPreferredSize(new Dimension(34, 30)); b.setMaximumSize(new Dimension(34, 30)); return b; }
 
     private void bump(int i, int d) {
         counts[i] = Math.max(0, Math.min(12, counts[i] + d));

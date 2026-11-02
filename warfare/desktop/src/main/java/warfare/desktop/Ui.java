@@ -73,7 +73,7 @@ final class Ui {
 
     /** Vertical column that always matches the scroll viewport's width (so nothing is clipped on the right). */
     static class ScrollColumn extends JPanel implements Scrollable {
-        ScrollColumn() { setLayout(new BoxLayout(this, BoxLayout.Y_AXIS)); setBackground(PANEL); }
+        ScrollColumn() { setLayout(new BoxLayout(this, BoxLayout.Y_AXIS)); setOpaque(false); }
         @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
         @Override public int getScrollableUnitIncrement(Rectangle r, int o, int d) { return 18; }
         @Override public int getScrollableBlockIncrement(Rectangle r, int o, int d) { return 120; }
@@ -137,13 +137,5 @@ final class Ui {
 
     static Component gap(int w, int h) { return Box.createRigidArea(new Dimension(w, h)); }
 
-    static JButton button(String text, String icon, Runnable r) {
-        JButton b = new JButton(text);
-        b.setFont(Fonts.ui(13f));
-        if (icon != null) b.setIcon(Assets.swingIcon(icon, 16, TEXT));
-        b.setIconTextGap(7);
-        b.setFocusable(false);
-        b.addActionListener(e -> { Audio.get().play(Synth.Sfx.CLICK); r.run(); });
-        return b;
-    }
+    static JButton button(String text, String icon, Runnable r) { return Wf.button(text, icon, r); }
 }

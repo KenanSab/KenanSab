@@ -17,10 +17,8 @@ final class ReportsPanel extends JPanel {
         super(new BorderLayout());
         this.gs = gs;
         content.setBorder(BorderFactory.createEmptyBorder(10, 12, 12, 12));
-        scroll = new JScrollPane(content);
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(Ui.PANEL);
-        scroll.getVerticalScrollBar().setUnitIncrement(18);
+        setOpaque(false);
+        scroll = Wf.scroll(content);
         add(scroll, BorderLayout.CENTER);
     }
 

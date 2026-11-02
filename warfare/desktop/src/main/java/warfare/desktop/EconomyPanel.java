@@ -23,23 +23,12 @@ final class EconomyPanel extends JPanel {
     EconomyPanel(GameState gs, Runnable onChanged, Runnable refreshAll) {
         super(new BorderLayout());
         this.gs = gs; this.onChanged = onChanged; this.refreshAll = refreshAll;
-        setPreferredSize(new Dimension(372, 100));
-        setBackground(Ui.PANEL);
-        JPanel head = new JPanel(new BorderLayout());
-        head.setBackground(new Color(24, 33, 52));
-        head.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
-        head.add(Ui.row(Ui.imageLabel(Assets.icon("money", 26, Ui.GOLD)), Ui.gap(8, 0), Ui.title("ECONOMY", 26)), BorderLayout.WEST);
-        head.add(Ui.label("[E] to hide", 12.5f, Ui.MUTED), BorderLayout.EAST);
-        add(head, BorderLayout.NORTH);
-
+        setOpaque(false);
         JPanel c = new Ui.ScrollColumn();
+        c.setOpaque(false);
         c.setBorder(BorderFactory.createEmptyBorder(6, 12, 14, 12));
         build(c);
-        JScrollPane sp = new JScrollPane(c);
-        sp.setBorder(null);
-        sp.getViewport().setBackground(Ui.PANEL);
-        sp.getVerticalScrollBar().setUnitIncrement(18);
-        add(sp, BorderLayout.CENTER);
+        add(Wf.scroll(c), BorderLayout.CENTER);
         update();
     }
 
@@ -138,40 +127,39 @@ final class EconomyPanel extends JPanel {
         Ui.Card pol = new Ui.Card(new BorderLayout());
         JPanel pc = Ui.column();
         pc.add(Ui.label("Mobilization", 13.5f, Ui.TEXT));
-        JComboBox<String> mob = new JComboBox<>(Budget.MOBILIZATION);
-        mob.setFont(Fonts.ui(13f));
-        mob.setAlignmentX(Component.LEFT_ALIGNMENT);
-        mob.addActionListener(e -> { if (!updating) { b().mobilization = mob.getSelectedIndex(); changed(); } });
+        Wf.Segmented mob = new Wf.Segmented(new String[]{"Peace", "Partial", "General", "Total"}, 0, i -> { if (!updating) { b().mobilization = i; changed(); } });
         pc.add(mob);
+        pc.add(Ui.gap(0, 3));
+        JLabel mobName = Ui.label(" ", 12.5f, Ui.TEXT);
+        pc.add(mobName);
         JLabel mobInfo = Ui.label(" ", 12f, Ui.MUTED);
         pc.add(mobInfo);
         pc.add(Ui.gap(0, 8));
         JLabel focus = Ui.label(" ", 13.5f, Ui.TEXT);
         pc.add(focus);
-        JSlider fs = new JSlider(-100, 100, 0);
-        fs.setOpaque(false);
-        fs.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JSlider fs = Wf.slider(-100, 100, 0);
         fs.addChangeListener(e -> { if (!updating) { b().industryFocus = fs.getValue() / 100.0; changed(); } });
         pc.add(fs);
         JLabel focusInfo = Ui.label(" ", 12f, Ui.MUTED);
         pc.add(focusInfo);
         pc.add(Ui.gap(0, 6));
-        JCheckBox ration = check("Fuel rationing (oil -30%, speed -7%)", () -> b().fuelRationing = !b().fuelRationing);
-        JCheckBox print = check("Print money (+30% revenue, inflation)", () -> b().printMoney = !b().printMoney);
+        Wf.Toggle ration = Wf.toggle("Fuel rationing (oil -30%, speed -7%)", false, on -> { if (!updating) { b().fuelRationing = on; changed(); } });
+        Wf.Toggle print = Wf.toggle("Print money (+30% revenue, inflation)", false, on -> { if (!updating) { b().printMoney = on; changed(); } });
         pc.add(ration); pc.add(print);
         pol.add(pc, BorderLayout.CENTER);
         c.add(pol);
         refreshers.add(() -> {
-            mob.setSelectedIndex(b().mobilization);
+            mob.select(b().mobilization);
             int m = b().mobilization;
+            mobName.setText(Budget.MOBILIZATION[m]);
             mobInfo.setText(String.format("Manpower x%.2f  -  GDP %+.0f%%  -  stability %+d", Budget.MOB_MANPOWER[m], (Budget.MOB_GDP[m] - 1) * 100, -(int) Budget.MOB_STABILITY[m]));
             fs.setValue((int) Math.round(b().industryFocus * 100));
             double f = b().industryFocus;
             focus.setText("Industry focus:  " + (f < -0.05 ? "civilian" : f > 0.05 ? "military" : "balanced"));
             focusInfo.setText(String.format("Production slots %d  -  GDP %+.1f%%", gs.productionCapacity(gs.player),
                     (-0.05 * Math.max(0, f) + 0.03 * Math.max(0, -f)) * 100));
-            ration.setSelected(b().fuelRationing);
-            print.setSelected(b().printMoney);
+            ration.set(b().fuelRationing);
+            print.set(b().printMoney);
         });
 
         // ---- ledger
@@ -202,25 +190,22 @@ final class EconomyPanel extends JPanel {
         Ui.Card bc = new Ui.Card(new BorderLayout());
         JPanel bcol = Ui.column();
         bcol.add(Ui.label("Start construction in your richest provinces:", 12.5f, Ui.MUTED));
-        JComboBox<Building> type = new JComboBox<>(Building.values());
-        type.setFont(Fonts.ui(13f));
-        type.setAlignmentX(Component.LEFT_ALIGNMENT);
-        type.setRenderer(new DefaultListCellRenderer() {
-            @Override public Component getListCellRendererComponent(JList<?> l, Object v, int i, boolean sel, boolean f) {
-                Building x = (Building) v;
-                return super.getListCellRendererComponent(l, x.label + "  -  from " + (int) x.cost + " money  (" + x.effect + ")", i, sel, f);
-            }
-        });
-        JSpinner count = new JSpinner(new SpinnerNumberModel(3, 1, 30, 1));
+        bcol.add(Ui.gap(0, 4));
+        Wf.Segmented type = new Wf.Segmented(new String[]{"Factory", "Roads", "Fort", "Airfield", "Radar", "Silo"}, 0, i -> {});
+        int[] count = {3};
+        JLabel countLabel = Ui.label("3", 16f, Ui.TEXT);
+        countLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        countLabel.setPreferredSize(new Dimension(30, 24));
         JLabel info = Ui.label(" ", 12f, Ui.MUTED);
-        JButton go = Ui.button("Build", "industry", () -> {
-            SidePanels.message(this, gs.autoBuild(gs.player, (Building) type.getSelectedItem(), (Integer) count.getValue()));
+        JButton go = Wf.primary("Build", "industry", () -> {
+            SidePanels.message(this, gs.autoBuild(gs.player, Building.values()[type.selected()], count[0]));
             refreshAll.run();
             update();
         });
         bcol.add(type);
         bcol.add(Ui.gap(0, 5));
-        bcol.add(Ui.row(Ui.label("How many  ", 13f, Ui.TEXT), count, Ui.gap(10, 0), go));
+        bcol.add(Ui.row(Ui.label("How many  ", 13f, Ui.TEXT), Wf.button("-", null, () -> { count[0] = Math.max(1, count[0] - 1); countLabel.setText("" + count[0]); }),
+                countLabel, Wf.button("+", null, () -> { count[0] = Math.min(30, count[0] + 1); countLabel.setText("" + count[0]); }), Ui.gap(14, 0), go));
         bcol.add(Ui.gap(0, 5));
         bcol.add(info);
         bc.add(bcol, BorderLayout.CENTER);
@@ -249,15 +234,6 @@ final class EconomyPanel extends JPanel {
         return bt;
     }
 
-    private JCheckBox check(String text, Runnable toggle) {
-        JCheckBox c = new JCheckBox(text);
-        c.setOpaque(false);
-        c.setFont(Fonts.ui(12.5f));
-        c.setAlignmentX(Component.LEFT_ALIGNMENT);
-        c.addActionListener(e -> { if (!updating) { toggle.run(); changed(); } });
-        return c;
-    }
-
     private JLabel valueLabel() { JLabel l = Ui.label(" ", 13.5f, Ui.TEXT); return l; }
 
     private JComponent statRow(String icon, Color tint, String name, JLabel value) {
@@ -277,9 +253,7 @@ final class EconomyPanel extends JPanel {
         JPanel col = Ui.column();
         JLabel value = Ui.label(" ", 14f, Ui.TEXT), money = Ui.label(" ", 12f, Ui.MUTED), eff = Ui.label(" ", 12f, Ui.MUTED);
         col.add(Ui.row(Ui.imageLabel(Assets.icon(icon, 20, tint)), Ui.gap(8, 0), Ui.label(name, 14f, Ui.TEXT), Box.createHorizontalGlue(), value));
-        JSlider sl = new JSlider(min, max, (int) Math.round(get.get()));
-        sl.setOpaque(false);
-        sl.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JSlider sl = Wf.slider(min, max, (int) Math.round(get.get()));
         sl.addChangeListener(e -> { if (!updating) { set.accept(sl.getValue()); changed(); } });
         col.add(sl);
         col.add(Ui.row(eff, Box.createHorizontalGlue(), money));

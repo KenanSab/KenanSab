@@ -5,62 +5,40 @@ import warfare.core.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-/** Warfare - desktop client. Run with no arguments to play; "--shot out.png [TAG] [days]" renders a headless screenshot. */
+/**
+ * Warfare - desktop client. No arguments: play. Tools: --shot, --start, --smoke, --basemap, --export-audio.
+ * Screenshot options are key=value pairs: window=economy|production|diplomacy|reports, modal=country:TAG:tab|menu|settings|achievements|controls,
+ * army, hover, zoom=3.0, tutorial=N, scroll.
+ */
 public final class WarfareApp {
-    static final int[] DAY_MS = {1000, 500, 250, 100, 40};
     static Path assets;
 
     public static void main(String[] args) throws Exception {
         assets = findAssets(args);
         Fonts.load(assets);
         Assets.init(assets);
+        theme();
         Settings.load();
         Profile.load();
         Steam.init();
-        theme();
         if (args.length >= 2 && args[0].equals("--export-audio")) { exportAudio(args[1]); return; }
-        if (args.length >= 4 && args[0].equals("--countryshot")) {
-            System.setProperty("java.awt.headless", "true");
-            WorldData world = WorldData.load(assets);
-            GameState gs = new GameState(world, world.nationByTag.get(args[2]), 9);
-            for (int i = 0; i < 30; i++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
-            if (args.length > 5) gs.ns[gs.player].agents.put(world.nationByTag.get(args[3]), Double.parseDouble(args[5]));
-            int tab = args.length > 4 ? Integer.parseInt(args[4]) : 0;
-            BufferedImage[] img = new BufferedImage[1];
-            SwingUtilities.invokeAndWait(() -> {
-                CountryMenu cm = new CountryMenu(null, gs, world.nationByTag.get(args[3]), () -> {}, () -> {});
-                cm.setTab(tab);
-                cm.root.setSize(560, 720);
-                layoutAll(cm.root);
-                cm.refreshBody();
-                layoutAll(cm.root);
-                img[0] = new BufferedImage(560, 720, BufferedImage.TYPE_INT_RGB);
-                Graphics2D g = img[0].createGraphics();
-                cm.root.paint(g);
-                g.dispose();
-            });
-            ImageIO.write(img[0], "png", new File(args[1]));
-            System.out.println("wrote " + args[1]);
-            return;
-        }
         if (args.length >= 2 && args[0].equals("--basemap")) {
             System.setProperty("java.awt.headless", "true");
             WorldData world = WorldData.load(assets);
-            MapShapes shapes = MapShapes.load(assets.resolve("arcs.bin.gz"), world.provinces.size());
-            Basemap b = new Basemap(shapes, world);
-            ImageIO.write(b.image, "png", new File(args[1]));
-            System.out.println("wrote " + args[1] + " " + b.image.getWidth() + "x" + b.image.getHeight());
+            ImageIO.write(basemap(world).image, "png", new File(args[1]));
+            System.out.println("wrote " + args[1]);
             return;
         }
-        if (args.length >= 2 && args[0].equals("--picker")) { picker(args[1]); return; }
+        if (args.length >= 2 && args[0].equals("--start")) { System.setProperty("java.awt.headless", "true"); startShot(args); return; }
         if (args.length >= 2 && args[0].equals("--shot")) { System.setProperty("java.awt.headless", "true"); shot(args); return; }
         WorldData world = WorldData.load(assets);
         Audio.get().start();
@@ -71,32 +49,31 @@ public final class WarfareApp {
             f.setLocationRelativeTo(null);
             String forced = null;
             for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
-            start(f, world, forced != null ? new NationPicker.Choice(world.nationByTag.get(forced), false) : chooseNation(f, world));
+            if (forced != null) start(f, world, new StartScreen.Choice(world.nationByTag.get(forced), false)); else showStart(f, world);
             f.setVisible(true);
             for (int i = 0; i < args.length; i++) if (args[i].equals("--smoke")) smoke(f, i + 1 < args.length && args[i + 1].matches("\\d+") ? Integer.parseInt(args[i + 1]) : 8);
         });
     }
 
-    /** Plays the real window for a few seconds at top speed, then screenshots it and exits. */
-    static JOptionPane findPane(Container c) {
-        if (c instanceof JOptionPane p) return p;
-        for (Component ch : c.getComponents()) if (ch instanceof Container k) { JOptionPane r = findPane(k); if (r != null) return r; }
-        return null;
+    // ------------------------------------------------------------------ unattended run
+    static <T extends Component> List<T> find(Container c, Class<T> type) {
+        List<T> out = new ArrayList<>();
+        for (Component ch : c.getComponents()) {
+            if (type.isInstance(ch)) out.add(type.cast(ch));
+            if (ch instanceof Container k) out.addAll(find(k, type));
+        }
+        return out;
     }
 
+    /** Plays the real window for a few seconds at top speed, answering every prompt, then screenshots it and exits. */
     static void smoke(JFrame f, int seconds) {
         GameUi ui = (GameUi) f.getContentPane();
         String war = System.getProperty("smoke.war");
         if (war != null && ui.gs.world.nationByTag.containsKey(war)) ui.gs.declareWar(ui.gs.player, ui.gs.world.nationByTag.get(war));
         ui.setSpeed(5);
-        // unattended: answer any modal dialog with its first option, and resume play after automatic pauses
         javax.swing.Timer auto = new javax.swing.Timer(250, e -> {
-            for (Window win : Window.getWindows()) {
-                if (!(win instanceof JDialog d) || !d.isVisible()) continue;
-                JOptionPane pane = findPane(d.getContentPane());
-                if (pane != null) { Object[] o = pane.getOptions(); pane.setValue(o != null && o.length > 0 ? o[0] : JOptionPane.OK_OPTION); } else d.dispose();
-            }
-            if (ui.paused) ui.setPaused(false);
+            if (ui.modals.isOpen()) { List<Wf.Button> b = find(ui.modals.top(), Wf.Button.class); if (!b.isEmpty()) b.get(0).doClick(); }
+            else if (ui.paused) ui.setPaused(false);
         });
         auto.start();
         javax.swing.Timer t = new javax.swing.Timer(seconds * 1000, e -> {
@@ -151,31 +128,83 @@ public final class WarfareApp {
         throw new IllegalStateException("Cannot find assets/map. Pass --assets <dir>.");
     }
 
-    static NationPicker.Choice chooseNation(JFrame f, WorldData w) { return NationPicker.pick(f, w); }
+    private static MapShapes sharedShapes;
+    private static Basemap sharedBasemap;
 
-    static void start(JFrame f, WorldData world, NationPicker.Choice choice) {
+    static synchronized MapShapes shapes(WorldData world) {
+        if (sharedShapes == null) {
+            try { sharedShapes = MapShapes.load(assets.resolve("arcs.bin.gz"), world.provinces.size()); }
+            catch (Exception e) { throw new IllegalStateException("cannot load map shapes", e); }
+        }
+        return sharedShapes;
+    }
+
+    static synchronized Basemap basemap(WorldData world) {
+        if (sharedBasemap == null) sharedBasemap = new Basemap(shapes(world), world);
+        return sharedBasemap;
+    }
+
+    /** Shows the start screen in the frame; choosing a nation begins a new game. */
+    static void showStart(JFrame f, WorldData world) {
+        f.setJMenuBar(null);
+        f.setContentPane(new StartScreen(world, choice -> start(f, world, choice)));
+        f.revalidate(); f.repaint();
+    }
+
+    static void start(JFrame f, WorldData world, StartScreen.Choice choice) {
         GameState gs = new GameState(world, choice.nation(), System.nanoTime());
         gs.ironman = choice.ironman();
         install(f, new GameUi(gs, f));
     }
 
     static void install(JFrame f, GameUi ui) {
+        f.setJMenuBar(null);
         f.setContentPane(ui);
-        f.setJMenuBar(ui.menuBar());
         f.revalidate();
         ui.focusStart();
     }
 
-    // ------------------------------------------------------------------ headless screenshot
+
+    // ------------------------------------------------------------------ headless screenshots
+    static Map<String, String> options(String[] args, int from) {
+        Map<String, String> o = new HashMap<>();
+        for (int i = from; i < args.length; i++) { String[] kv = args[i].split("=", 2); o.put(kv[0], kv.length > 1 ? kv[1] : "1"); }
+        return o;
+    }
+
+    static void paintTo(Component c, int w, int h, File out) throws Exception {
+        BufferedImage[] img = new BufferedImage[1];
+        SwingUtilities.invokeAndWait(() -> {
+            c.setSize(w, h);
+            layoutAll(c);
+            layoutAll(c);
+            img[0] = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = img[0].createGraphics();
+            c.paint(g);
+            g.dispose();
+        });
+        ImageIO.write(img[0], "png", out);
+        System.out.println("wrote " + out);
+    }
+
+    static void startShot(String[] args) throws Exception {
+        WorldData world = WorldData.load(assets);
+        JPanel[] p = new JPanel[1];
+        SwingUtilities.invokeAndWait(() -> p[0] = new StartScreen(world, c -> {}));
+        paintTo(p[0], 1500, 900, new File(args[1]));
+    }
+
+    /** --shot out.png TAG DAYS FOE MODE [options] : a war between TAG and FOE, DAYS in, rendered headless. */
     static void shot(String[] args) throws Exception {
-        String out = args[1];
-        String tag = args.length > 2 ? args[2] : "RUS";
+        String out = args[1], tag = args.length > 2 ? args[2] : "RUS";
         int days = args.length > 3 ? Integer.parseInt(args[3]) : 30;
         WorldData world = WorldData.load(assets);
         GameState gs = new GameState(world, world.nationByTag.get(tag), 7);
         int me = gs.player;
-        int foe = world.nationByTag.get(args.length > 4 ? args[4] : "UKR");
-        gs.declareWar(me, foe);
+        String foeTag = args.length > 4 ? args[4] : "UKR";
+        if (!foeTag.equals("none")) gs.declareWar(me, world.nationByTag.get(foeTag));
+        MapPanel.Mode mode = MapPanel.Mode.valueOf(args.length > 5 ? args[5] : "POLITICAL");
+        Map<String, String> o = options(args, 6);
         int focus = -1;
         for (int i = 0; i < days; i++) {
             if (i % 3 == 0) for (Army a : gs.armies.values()) if (a.owner == me && a.path.isEmpty() && a.battleId < 0) Ai.manageArmies(gs, me);
@@ -184,31 +213,51 @@ public final class WarfareApp {
         }
         for (Army a : gs.armies.values()) if (a.owner == me) { focus = a.province; break; }
         final int fp = focus;
-        BufferedImage[] img = new BufferedImage[1];
         SwingUtilities.invokeAndWait(() -> {
             GameUi ui = new GameUi(gs, null);
+            Settings.tutorial = false;
             ui.setSize(1500, 900);
             layoutAll(ui);
-            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, args.length > 10 ? Double.parseDouble(args[10]) : 3.2);
-            if (args.length > 5) ui.map.setMode(MapPanel.Mode.valueOf(args[5]));
-            ui.map.selProv = fp;
-            if (args.length > 6) ui.tabs.setSelectedIndex(Integer.parseInt(args[6]));
-            if (args.length > 9 && Integer.parseInt(args[9]) >= 0) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(args[9]); }
+            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, Double.parseDouble(o.getOrDefault("zoom", "3.0")));
+            ui.map.setMode(mode);
+            if (o.containsKey("tutorial")) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(o.get("tutorial")); }
             else ui.map.tutorial.active = false;
-            if (args.length > 11 && args[11].equals("economy")) { ui.economy.setVisible(true); ui.economy.update(); }
-            if (args.length > 13 && args[13].equals("hover")) {
+            if (o.containsKey("army")) for (Army a : gs.armies.values()) if (a.owner == me) { ui.map.selArmy = a.id; ui.map.selProv = a.province; break; }
+            if (o.containsKey("province")) ui.map.selProv = fp >= 0 ? fp : world.nations.get(me).capital;
+            if (o.containsKey("window")) ui.pick(o.get("window"));
+            if (o.containsKey("toast")) ui.map.toast("Out of Nowhere", "Win a battle with Ambush while unseen.", "t_ambush", "ACHIEVEMENT UNLOCKED");
+            ui.refresh();
+            layoutAll(ui);
+            if (o.containsKey("scroll") && ui.openWindow != null)
+                for (JScrollPane sp : find(ui.windows.get(ui.openWindow), JScrollPane.class)) { layoutAll(sp); sp.getVerticalScrollBar().setValue(sp.getVerticalScrollBar().getMaximum()); }
+            String modal = o.get("modal");
+            if (modal != null) {
+                if (modal.startsWith("country:")) {
+                    String[] parts = modal.split(":");
+                    CountryMenu cm = new CountryMenu(gs, world.nationByTag.get(parts[1]), () -> {}, () -> {});
+                    ui.modals.push(cm.card(() -> {}));
+                    layoutAll(ui);
+                    if (parts.length > 2) { cm.setTab(Integer.parseInt(parts[2])); layoutAll(ui); }
+                } else {
+                    switch (modal) {
+                        case "menu" -> GameMenu.open(ui);
+                        case "settings" -> ui.modals.push(GameMenu.settings(ui));
+                        case "achievements" -> ui.modals.push(GameMenu.achievements(ui));
+                        case "controls" -> ui.modals.push(GameMenu.controls(ui));
+                        case "slots" -> ui.modals.push(GameMenu.slots(ui, true));
+                        default -> {}
+                    }
+                }
+            }
+            if (o.containsKey("hover")) {
                 java.awt.geom.Point2D.Double sp = ui.map.screenOf(fp >= 0 ? fp : world.nations.get(me).capital);
                 ui.map.dispatchEvent(new java.awt.event.MouseEvent(ui.map, java.awt.event.MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, (int) sp.x + 34, (int) sp.y + 40, 0, false));
             }
-            if (args.length > 12 && args[12].equals("scroll")) {
-                ui.economy.setVisible(true);
-                layoutAll(ui);
-                for (java.awt.Component c : ui.economy.getComponents()) if (c instanceof JScrollPane sp) { layoutAll(sp); sp.getVerticalScrollBar().setValue(sp.getVerticalScrollBar().getMaximum()); }
-            }
-            if (args.length > 8 && args[8].equals("toast")) ui.map.toast("Out of Nowhere", "Win a battle with Ambush while unseen.", "t_ambush");
-            if (args.length > 7 && args[7].equals("army"))
-                for (Army a : gs.armies.values()) if (a.owner == me) { ui.map.selArmy = a.id; ui.map.selProv = a.province; break; }
-            ui.refresh();
+            layoutAll(ui);
+        });
+        BufferedImage[] img = new BufferedImage[1];
+        SwingUtilities.invokeAndWait(() -> {
+            GameUi ui = GameUi.current;
             layoutAll(ui);
             img[0] = new BufferedImage(1500, 900, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = img[0].createGraphics();
@@ -253,30 +302,6 @@ public final class WarfareApp {
             o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen));
             for (short v : pcm) o.writeShort(Short.reverseBytes(v));
         }
-    }
-
-    static void picker(String out) throws Exception {
-        System.clearProperty("java.awt.headless");
-        WorldData world = WorldData.load(assets);
-        SwingUtilities.invokeAndWait(() -> {
-            JFrame f = new JFrame("picker");
-            NationPicker p = new NationPicker(world);
-            f.setContentPane(p);
-            f.setSize(900, 580);
-            f.setVisible(true);
-            javax.swing.Timer t = new javax.swing.Timer(1500, e -> {
-                try {
-                    BufferedImage img = new BufferedImage(900, 580, BufferedImage.TYPE_INT_RGB);
-                    Graphics2D g = img.createGraphics();
-                    f.getContentPane().paint(g);
-                    g.dispose();
-                    ImageIO.write(img, "png", new File(out));
-                    System.out.println("wrote " + out);
-                } catch (Exception ex) { ex.printStackTrace(); }
-                System.exit(0);
-            });
-            t.setRepeats(false); t.start();
-        });
     }
 
     static void layoutAll(Component c) {

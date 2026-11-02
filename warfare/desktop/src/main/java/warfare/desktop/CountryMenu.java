@@ -17,45 +17,36 @@ final class CountryMenu {
     final GameState gs;
     final int nation;
     final JPanel root = new JPanel(new BorderLayout());
-    final JDialog dialog;
     private final Runnable refreshAll, openEconomy;
     private int tab;
-    private final JPanel header = new JPanel(new BorderLayout()), tabBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 6));
+    private final JPanel header = new JPanel(new BorderLayout());
     private final JPanel body = new Ui.ScrollColumn();
-    private final JScrollPane scroll = new JScrollPane(body);
-    private javax.swing.Timer timer;
+    private final JScrollPane scroll = Wf.scroll(body);
+    private final Wf.Segmented tabs = new Wf.Segmented(TABS, 0, i -> { tab = i; refreshBody(); });
 
-    CountryMenu(Window owner, GameState gs, int nation, Runnable refreshAll, Runnable openEconomy) {
+    CountryMenu(GameState gs, int nation, Runnable refreshAll, Runnable openEconomy) {
         this.gs = gs; this.nation = nation; this.refreshAll = refreshAll; this.openEconomy = openEconomy;
-        root.setBackground(Ui.PANEL);
-        header.setBackground(new Color(22, 31, 50));
-        header.setBorder(BorderFactory.createEmptyBorder(14, 18, 12, 18));
-        tabBar.setBackground(Ui.PANEL);
+        root.setOpaque(false);
+        header.setOpaque(false);
+        header.setBorder(BorderFactory.createEmptyBorder(4, 18, 8, 18));
         body.setBorder(BorderFactory.createEmptyBorder(6, 16, 16, 16));
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(Ui.PANEL);
-        scroll.getVerticalScrollBar().setUnitIncrement(18);
         JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
         top.add(header, BorderLayout.NORTH);
-        top.add(tabBar, BorderLayout.SOUTH);
+        JPanel tabWrap = new JPanel(new BorderLayout());
+        tabWrap.setOpaque(false);
+        tabWrap.setBorder(BorderFactory.createEmptyBorder(4, 18, 4, 18));
+        tabWrap.add(tabs, BorderLayout.CENTER);
+        top.add(tabWrap, BorderLayout.SOUTH);
         root.add(top, BorderLayout.NORTH);
         root.add(scroll, BorderLayout.CENTER);
-        if (owner != null) {
-            dialog = new JDialog(owner, gs.nationName(nation), Dialog.ModalityType.MODELESS);
-            dialog.setContentPane(root);
-            dialog.setSize(560, 700);
-            dialog.setLocationRelativeTo(owner);
-            timer = new javax.swing.Timer(1000, e -> { if (dialog.isVisible()) refreshBody(); });
-            dialog.addWindowListener(new java.awt.event.WindowAdapter() {
-                @Override public void windowClosed(java.awt.event.WindowEvent e) { timer.stop(); }
-            });
-        } else dialog = null;
         rebuild();
     }
 
-    void show() { if (dialog != null) { dialog.setVisible(true); timer.start(); } }
+    /** The country screen as an in-game card (hosted by the modal layer). */
+    JComponent card(Runnable onClose) { return Modals.card(info().name, "castle", root, 600, 660, onClose); }
 
-    void setTab(int t) { tab = t; rebuild(); }
+    void setTab(int t) { tab = t; tabs.select(t); refreshBody(); }
 
     // ------------------------------------------------------------------ structure
     private boolean mine() { return nation == gs.player; }
@@ -67,8 +58,8 @@ final class CountryMenu {
         header.removeAll();
         WorldData.NationInfo ni = info();
         JPanel text = Ui.column();
-        text.add(Ui.title(ni.name.toUpperCase(), 38));
-        text.add(Ui.label(st().gov.label + "  -  capital " + (ni.capitalName.isEmpty() ? "?" : ni.capitalName) + "  -  " + ni.continent, 13.5f, Ui.MUTED));
+        text.add(Ui.label(st().gov.label.toUpperCase(), 14f, Wf.GOLD));
+        text.add(Ui.label("capital " + (ni.capitalName.isEmpty() ? "?" : ni.capitalName) + "  -  " + ni.continent, 13.5f, Ui.MUTED));
         JPanel pills = Ui.row();
         String rel = mine() ? "YOUR NATION" : gs.war[gs.player][nation] ? "AT WAR WITH YOU" : gs.isAlly(gs.player, nation) ? "ALLY" : "NEUTRAL";
         Color rc = mine() ? Ui.ACCENT : gs.war[gs.player][nation] ? Ui.RED : gs.isAlly(gs.player, nation) ? Ui.GREEN : Ui.MUTED;
@@ -80,16 +71,6 @@ final class CountryMenu {
         header.add(Ui.row(Ui.imageLabel(Assets.flag(ni, 110)), Ui.gap(16, 0), text), BorderLayout.CENTER);
         header.revalidate(); header.repaint();
 
-        tabBar.removeAll();
-        for (int i = 0; i < TABS.length; i++) {
-            final int idx = i;
-            JToggleButton b = new JToggleButton(TABS[i].toUpperCase(), i == tab);
-            b.setFont(Fonts.label(15f));
-            b.setFocusable(false);
-            b.addActionListener(e -> { Audio.get().play(Synth.Sfx.CLICK); tab = idx; rebuild(); });
-            tabBar.add(b);
-        }
-        tabBar.revalidate(); tabBar.repaint();
         refreshBody();
     }
 
@@ -204,21 +185,19 @@ final class CountryMenu {
         if (mine()) {
             body.add(Ui.section("Powers of the state"));
             JPanel acts = Ui.column();
-            acts.add(Ui.row(Ui.button("Open economy panel", "money", () -> { if (dialog != null) dialog.setVisible(false); openEconomy.run(); })));
+            acts.add(Ui.row(Ui.button("Open economy panel", "money", () -> { GameUi.closeModals(); openEconomy.run(); })));
             acts.add(Ui.gap(0, 5));
             if (g.elections) {
                 acts.add(Ui.row(Ui.button("Call early elections", "general", () -> {
-                    if (JOptionPane.showConfirmDialog(root, "Call elections tomorrow? If approval is below 50% you lose power.", "Early elections", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION)
-                        { SidePanels.message(root, gs.callElection(nation)); refreshAll.run(); refreshBody(); }
+                    GameUi.confirm("Early elections", "Call elections tomorrow? If approval is below 50% you lose power.", "Call elections", false,
+                            () -> { SidePanels.message(root, gs.callElection(nation)); refreshAll.run(); refreshBody(); });
                 })));
                 acts.add(Ui.gap(0, 5));
             }
             if (g == Government.DEMOCRACY || g == Government.REPUBLIC || g == Government.MONARCHY) {
-                JButton seize = Ui.button("Seize emergency powers", "wall", () -> {
-                    if (JOptionPane.showConfirmDialog(root, "Suspend elections and rule by decree? Stability -15 and the world will condemn it.", "Emergency powers", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION)
-                        { SidePanels.message(root, gs.seizePower(nation)); refreshAll.run(); rebuild(); }
-                });
-                seize.setBackground(new Color(110, 40, 40));
+                JButton seize = Wf.danger("Seize emergency powers", "wall", () ->
+                    GameUi.confirm("Emergency powers", "Suspend elections and rule by decree? Stability -15 and the world will condemn it.", "Seize power", true,
+                            () -> { SidePanels.message(root, gs.seizePower(nation)); refreshAll.run(); rebuild(); }));
                 acts.add(Ui.row(seize));
             }
             body.add(card(acts));

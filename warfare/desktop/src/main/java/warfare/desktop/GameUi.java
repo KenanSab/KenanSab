@@ -5,72 +5,226 @@ import warfare.core.*;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.KeyEvent;
+import java.awt.geom.RoundRectangle2D;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.IntConsumer;
 
-/** The in-game window: top bar, map, dockable tabs and news bar, plus the real-time-with-pause loop. */
+/**
+ * The in-game screen: a full-window map with a floating HUD (medallion, resource plates, time controls), a left icon
+ * rail that opens floating windows, a selection card on the right and a modal layer for menus and decisions.
+ * The simulation runs on real elapsed time so speed does not depend on frame rate.
+ */
 final class GameUi extends JPanel {
+    static GameUi current;
+
     final GameState gs;
     final JFrame frame;
     final MapPanel map;
     final SelectionPanel selection;
     final ProductionPanel production;
-    final SidePanels.Diplomacy diplomacy;
+    final DiplomacyPanel diplomacy;
     final ReportsPanel log;
-    final JTabbedPane tabs = new JTabbedPane();
-    final JLabel newsBar = new JLabel(" ");
-    final TopBar topBar;
-    JCheckBoxMenuItem economyMenu;
     final EconomyPanel economy;
+    final Hud hud;
+    final Rail rail;
+    final Modals modals = new Modals();
+    final JLayeredPane layers = new JLayeredPane();
+    final Wf.Window selectionCard;
+    final Map<String, Wf.Window> windows = new LinkedHashMap<>();
+    final NewsPlate news = new NewsPlate();
     final Timer timer;
+    String openWindow;
+    CountryMenu country;
     boolean paused = true;
     int speed = 2;
-    boolean dockRight = true, showSide = true, showNews = true;
 
     GameUi(GameState gs, JFrame frame) {
         super(new BorderLayout());
         this.gs = gs; this.frame = frame;
+        current = this;
         map = new MapPanel(gs, WarfareApp.assets);
         Runnable refresh = this::refresh;
         selection = new SelectionPanel(gs, map, refresh);
         production = new ProductionPanel(gs, map, refresh);
-        diplomacy = new SidePanels.Diplomacy(gs, map, refresh);
+        diplomacy = new DiplomacyPanel(gs, map, refresh);
         log = new ReportsPanel(gs);
+        economy = new EconomyPanel(gs, this::refreshTop, refresh);
         map.tutorial = new Tutorial(Settings.tutorial && gs.day < 3, gs.day);
         map.onCapital = this::openCountry;
         diplomacy.onOpen = this::openCountry;
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
-        tabs.addTab("Selection", Assets.swingIcon("tab_select", 18, Ui.TEXT), selection);
-        tabs.addTab("Production", Assets.swingIcon("tab_prod", 18, Ui.TEXT), production);
-        tabs.addTab("Diplomacy", Assets.swingIcon("tab_diplo", 18, Ui.TEXT), diplomacy);
-        tabs.addTab("Reports", Assets.swingIcon("tab_reports", 18, Ui.TEXT), log);
-        tabs.setPreferredSize(new Dimension(410, 100));
-        tabs.addChangeListener(e -> updateVisibleTab());
-        tabs.setFont(Fonts.label(15f));
-        economy = new EconomyPanel(gs, this::refreshTop, refresh);
-        economy.setVisible(false);
-        topBar = new TopBar(gs, () -> setPaused(!paused), this::setSpeed, this::toggleEconomy);
-        add(topBar, BorderLayout.NORTH);
-        add(economy, BorderLayout.WEST);
-        add(map, BorderLayout.CENTER);
-        add(tabs, BorderLayout.EAST);
-        JPanel south = new JPanel(new BorderLayout());
-        south.setBackground(Ui.BG);
-        newsBar.setFont(Fonts.ui(13f));
-        newsBar.setForeground(Ui.TEXT);
-        newsBar.setIcon(Assets.swingIcon("tab_reports", 16, Ui.MUTED));
-        newsBar.setIconTextGap(8);
-        south.add(newsBar, BorderLayout.CENTER);
-        south.setBorder(BorderFactory.createEmptyBorder(5, 12, 5, 12));
-        add(south, BorderLayout.SOUTH);
+
+        hud = new Hud(gs, () -> setPaused(!paused), this::setSpeed, () -> GameMenu.open(this), () -> openCountry(gs.player));
+        rail = new Rail(this::pick);
+        selectionCard = new Wf.Window("Selection", "tab_select", this::clearSelection);
+        selectionCard.body.add(selection, BorderLayout.CENTER);
+        windows.put("economy", window("Economy", "money", economy));
+        windows.put("diplomacy", window("Diplomacy", "tab_diplo", diplomacy));
+        windows.put("production", window("Build and recruit", "tab_prod", production));
+        windows.put("reports", window("Reports", "tab_reports", log));
+
+        layers.setLayout(new HudLayout());
+        layers.add(map, JLayeredPane.DEFAULT_LAYER);
+        for (JComponent c : new JComponent[]{hud.badge, hud.plates, hud.time, rail, selectionCard, news}) layers.add(c, JLayeredPane.PALETTE_LAYER);
+        layers.add(modals, JLayeredPane.MODAL_LAYER);
+        selectionCard.setVisible(false);
+        add(layers, BorderLayout.CENTER);
+
         timer = new Timer(16, e -> frame());
         timer.setRepeats(true);
         bindKeys();
         refresh();
     }
 
+    private Wf.Window window(String title, String icon, JComponent content) {
+        Wf.Window w = new Wf.Window(title, icon, () -> pick(openWindow));
+        w.body.add(content, BorderLayout.CENTER);
+        return w;
+    }
+
+    // ------------------------------------------------------------------ static helpers used by panels
+    static void notify(GameState.Result r) {
+        if (current == null || r == null) return;
+        Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
+        current.map.toast(r.ok ? "Done" : "Cannot do that", r.message, r.ok ? "tab_prod" : "battle", r.ok ? "ORDER" : "NOTICE");
+    }
+
+    static void confirm(String title, String text, String yes, boolean danger, Runnable onYes) { if (current != null) current.confirmCard(title, text, yes, danger, onYes); }
+
+    static void closeModals() { if (current != null) current.modals.clear(); }
+
+    // ------------------------------------------------------------------ layout
+    private final class HudLayout implements LayoutManager {
+        @Override public void addLayoutComponent(String n, Component c) {}
+        @Override public void removeLayoutComponent(Component c) {}
+        @Override public Dimension preferredLayoutSize(Container p) { return new Dimension(1400, 860); }
+        @Override public Dimension minimumLayoutSize(Container p) { return new Dimension(900, 600); }
+
+        @Override public void layoutContainer(Container c) {
+            int W = c.getWidth(), H = c.getHeight();
+            map.setBounds(0, 0, W, H);
+            hud.badge.setBounds(10, 6, 340, 74);
+            int timeW = 46 + 246 + 28;
+            hud.time.setBounds(W - timeW - 8, 14, timeW, 50);
+            int plateX = 360, plateW = Math.max(200, W - timeW - 8 - plateX - 8);
+            hud.plates.setBounds(plateX, 18, plateW, 50);
+            rail.setBounds(10, 92, 70, rail.getPreferredSize().height);
+            boolean sel = selectionCard.isVisible();
+            int selW = 410;
+            map.rightInset = sel ? selW + 16 : 0;
+            if (sel) selectionCard.setBounds(W - selW - 6, 72, selW, Math.max(260, H - 72 - 70));
+            Wf.Window w = openWindow == null ? null : windows.get(openWindow);
+            if (w != null) {
+                int ww = 420;
+                int avail = W - 92 - (sel ? selW + 16 : 0) - 20;
+                w.setBounds(92, 88, Math.min(ww, Math.max(320, avail)), Math.max(300, H - 88 - 74));
+            }
+            int nw = Math.min(600, Math.max(260, W - 900));
+            news.setBounds((W - nw) / 2, H - 92, nw, 30);
+            modals.setBounds(0, 0, W, H);
+        }
+    }
+
+    /** A rounded plate showing the latest headline. */
+    static final class NewsPlate extends JComponent {
+        private String text = "";
+
+        void set(String t) { if (!t.equals(text)) { text = t; setVisible(!t.isBlank()); repaint(); } }
+
+        @Override protected void paintComponent(Graphics g0) {
+            if (text.isBlank()) return;
+            Graphics2D g = (Graphics2D) g0.create();
+            Wf.quality(g);
+            int w = getWidth(), h = getHeight();
+            g.setColor(new Color(10, 16, 28, 215));
+            g.fill(new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 16, 16));
+            g.setColor(new Color(255, 255, 255, 36));
+            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 2, h - 2, 16, 16));
+            g.drawImage(Assets.icon("tab_reports", 16, Ui.MUTED), 10, 7, null);
+            g.setFont(Fonts.ui(13f));
+            g.setColor(Ui.TEXT);
+            FontMetrics fm = g.getFontMetrics();
+            String t = text;
+            while (fm.stringWidth(t) > w - 40 && t.length() > 8) t = t.substring(0, t.length() - 2);
+            g.drawString(t.equals(text) ? t : t + "...", 34, h / 2 + fm.getAscent() / 2 - 2);
+            g.dispose();
+        }
+    }
+
+    // ------------------------------------------------------------------ windows and selection
+    boolean isOpen(String key) { return key.equals(openWindow); }
+
+    /** Rail click or hotkey: open a window (closing any other), close it if it is already open, or open the country screen. */
+    void pick(String key) {
+        if (key == null) return;
+        if (key.equals("country")) { openCountry(gs.player); return; }
+        Wf.Window old = openWindow == null ? null : windows.get(openWindow);
+        if (old != null) layers.remove(old);
+        if (key.equals(openWindow)) openWindow = null;
+        else {
+            openWindow = key;
+            Wf.Window w = windows.get(key);
+            layers.add(w, JLayeredPane.PALETTE_LAYER);
+            if (key.equals("economy")) economy.update();
+        }
+        rail.setActive(openWindow);
+        layers.revalidate(); layers.repaint();
+        updateVisibleTab();
+    }
+
+    /** Back-compat for the old name used by the tutorial and tests. */
+    void toggleEconomy() { pick("economy"); }
+
+    void clearSelection() { map.selArmy = -1; map.selProv = -1; map.raidArmy = -1; refresh(); }
+
+    private void syncSelectionCard() {
+        boolean want = map.selArmy >= 0 || map.selProv >= 0;
+        if (want != selectionCard.isVisible()) { selectionCard.setVisible(want); layers.revalidate(); layers.repaint(); }
+    }
+
+    void focusStart() {
+        SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, 3.0); refresh(); });
+    }
+
+    // ------------------------------------------------------------------ input
+    void bindKeys() {
+        InputMap im = getInputMap(WHEN_IN_FOCUSED_WINDOW);
+        ActionMap am = getActionMap();
+        key(im, am, KeyEvent.VK_SPACE, "pause", () -> setPaused(!paused));
+        for (int s = 1; s <= 5; s++) { final int sp = s; key(im, am, KeyEvent.VK_0 + s, "speed" + s, () -> setSpeed(sp)); }
+        int[][] keys = {{KeyEvent.VK_LEFT, KeyEvent.VK_A}, {KeyEvent.VK_RIGHT, KeyEvent.VK_D}, {KeyEvent.VK_UP, KeyEvent.VK_W}, {KeyEvent.VK_DOWN, KeyEvent.VK_S}};
+        double[][] dirs = {{90, 0}, {-90, 0}, {0, 90}, {0, -90}};
+        for (int i = 0; i < 4; i++) { final double[] d = dirs[i]; for (int k : keys[i]) key(im, am, k, "pan" + i + "_" + k, () -> map.pan(d[0], d[1])); }
+        for (int k : new int[]{KeyEvent.VK_EQUALS, KeyEvent.VK_PLUS, KeyEvent.VK_ADD}) key(im, am, k, "zin" + k, () -> map.zoomBy(1.25));
+        for (int k : new int[]{KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT}) key(im, am, k, "zout" + k, () -> map.zoomBy(0.8));
+        key(im, am, KeyEvent.VK_F3, "perf", () -> { map.showPerf = !map.showPerf; map.repaint(); });
+        key(im, am, KeyEvent.VK_E, "economy", () -> pick("economy"));
+        key(im, am, KeyEvent.VK_T, "diplomacy", () -> pick("diplomacy"));
+        key(im, am, KeyEvent.VK_P, "production", () -> pick("production"));
+        key(im, am, KeyEvent.VK_R, "reports", () -> pick("reports"));
+        key(im, am, KeyEvent.VK_C, "country", () -> openCountry(gs.player));
+        key(im, am, KeyEvent.VK_M, "mode", () -> { MapPanel.Mode[] m = MapPanel.Mode.values(); map.setMode(m[(map.mode.ordinal() + 1) % m.length]); });
+        key(im, am, KeyEvent.VK_ESCAPE, "esc", this::escape);
+    }
+
+    private void key(InputMap im, ActionMap am, int code, String name, Runnable r) {
+        im.put(KeyStroke.getKeyStroke(code, 0), name);
+        am.put(name, new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { if (!modals.isOpen() || name.equals("esc")) r.run(); } });
+    }
+
+    private void escape() {
+        if (modals.isOpen()) { modals.pop(); return; }
+        if (selectionCard.isVisible()) { clearSelection(); return; }
+        if (openWindow != null) { pick(openWindow); return; }
+        GameMenu.open(this);
+    }
+
+    // ------------------------------------------------------------------ time
     /** Game days per real second at each speed setting. */
     static final double[] DAYS_PER_SEC = {1, 2.5, 5, 10, 22};
     private double acc;
@@ -79,43 +233,9 @@ final class GameUi extends JPanel {
     double daysPerSecNow;
     private long perfWindowStart = System.nanoTime();
     private int perfDays;
-
-    void focusStart() {
-        SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, 3.5); map.selProv = gs.world.nations.get(gs.player).capital; refresh(); });
-    }
-
-    void bindKeys() {
-        InputMap im = getInputMap(WHEN_IN_FOCUSED_WINDOW);
-        ActionMap am = getActionMap();
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "pause");
-        am.put("pause", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { setPaused(!paused); } });
-        for (int s = 1; s <= 5; s++) {
-            final int sp = s;
-            im.put(KeyStroke.getKeyStroke(KeyEvent.VK_0 + s, 0), "speed" + s);
-            am.put("speed" + s, new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { setSpeed(sp); } });
-        }
-        String[] names = {"left", "right", "up", "down"};
-        int[][] keys = {{KeyEvent.VK_LEFT, KeyEvent.VK_A}, {KeyEvent.VK_RIGHT, KeyEvent.VK_D}, {KeyEvent.VK_UP, KeyEvent.VK_W}, {KeyEvent.VK_DOWN, KeyEvent.VK_S}};
-        double[][] dirs = {{90, 0}, {-90, 0}, {0, 90}, {0, -90}};
-        for (int i = 0; i < 4; i++) {
-            final double[] d = dirs[i];
-            for (int k : keys[i]) im.put(KeyStroke.getKeyStroke(k, 0), "pan" + names[i]);
-            am.put("pan" + names[i], new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.pan(d[0], d[1]); } });
-        }
-        for (int k : new int[]{KeyEvent.VK_EQUALS, KeyEvent.VK_PLUS, KeyEvent.VK_ADD}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomin");
-        for (int k : new int[]{KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomout");
-        am.put("zoomin", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(1.25); } });
-        am.put("zoomout", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(0.8); } });
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "perf");
-        am.put("perf", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.showPerf = !map.showPerf; map.repaint(); } });
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_E, 0), "economy");
-        am.put("economy", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { toggleEconomy(); } });
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_M, 0), "mode");
-        am.put("mode", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) {
-            MapPanel.Mode[] m = MapPanel.Mode.values(); map.setMode(m[(map.mode.ordinal() + 1) % m.length]); } });
-        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "esc");
-        am.put("esc", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.selArmy = -1; refresh(); } });
-    }
+    static long simNs, colorNs, uiNs, ticks;
+    private int seenNews;
+    private long lastPanel;
 
     void setPaused(boolean p) {
         paused = p;
@@ -125,30 +245,25 @@ final class GameUi extends JPanel {
 
     void setSpeed(int s) { speed = s; if (paused) setPaused(false); else refresh(); }
 
-    static long simNs, colorNs, uiNs, ticks;
-    private int seenNews;
-
-    /** Timer callback: advance the simulation by elapsed real time (so speed does not depend on frame rate), then repaint once. */
+    /** Timer callback: advance the simulation by elapsed real time, then repaint once. */
     void frame() {
         long now = System.nanoTime();
         double dt = Math.min(0.12, (now - lastNanos) / 1e9);
         lastNanos = now;
+        if (modals.isOpen()) return;
         acc += dt * DAYS_PER_SEC[speed - 1];
         int steps = 0;
         while (acc >= 1 && steps < 6 && !gs.pauseRequested) { stepOnce(); acc -= 1; steps++; }
-        if (acc > 2) acc = 2;                       // never try to catch up a long backlog
+        if (acc > 2) acc = 2;
         if (steps > 0) finishFrame(steps);
-        long took = System.nanoTime() - now;
-        frames++; frameNsTotal += took;
+        frames++; frameNsTotal += System.nanoTime() - now;
     }
 
-    /** One game day: simulation plus the cheap per-day bookkeeping. */
     private void stepOnce() {
         long t0 = System.nanoTime();
         gs.advanceDay();
         simNs += System.nanoTime() - t0;
-        ticks++;
-        perfDays++;
+        ticks++; perfDays++;
         audioCues();
         metaChecks();
     }
@@ -166,25 +281,19 @@ final class GameUi extends JPanel {
         handlePauses();
     }
 
-    private long lastPanel;
-
-    /** Cheap refresh used while time runs: top bar every frame, side panels a few times per second. */
+    /** Cheap refresh used while time runs: HUD every frame, panels a few times per second. */
     private void refreshLight() {
-        topBar.update(paused, speed);
+        hud.update(paused, speed);
         long now = System.currentTimeMillis();
-        if (now - lastPanel > 400) { lastPanel = now; updateVisibleTab(); int n = gs.news.size(); newsBar.setText(n == 0 ? " " : gs.news.get(n - 1)); }
+        if (now - lastPanel > 400) { lastPanel = now; updateVisibleTab(); int n = gs.news.size(); news.set(n == 0 ? "" : gs.news.get(n - 1)); }
     }
 
     /** One synchronous game day, used by tests and the headless harness. */
-    void tick() {
-        stepOnce();
-        finishFrame(1);
-        refresh();
-    }
+    void tick() { stepOnce(); finishFrame(1); refresh(); }
 
+    // ------------------------------------------------------------------ cues, meta
     private boolean gameOverShown;
 
-    /** Autosave, achievements and the game-over screen. */
     void metaChecks() {
         if (gs.day > 0 && gs.day % 30 == 0 && (Settings.autosave || gs.ironman)) {
             try { gs.save(savePath(gs.ironman ? "ironman" : "autosave")); } catch (Exception ignored) {}
@@ -205,13 +314,11 @@ final class GameUi extends JPanel {
     void gameOver() {
         String stats = String.format("%s fell on %s.%n%nProvinces captured: %d   Battles won: %d   Capitals taken: %d",
                 gs.nationName(gs.player), gs.date(), gs.stCaptures, gs.stBattlesWon, gs.stCapitals);
-        int c = JOptionPane.showOptionDialog(this, stats, "Your nation has been eliminated", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
-                new Object[]{"New game", "Keep watching", "Quit"}, "New game");
-        if (c == 0) { timer.stop(); WarfareApp.start(frame, gs.world, WarfareApp.chooseNation(frame, gs.world)); }
-        else if (c == 2) System.exit(0);
+        choose("Your nation has been eliminated", "nuke", stats, List.of("New game", "Keep watching", "Quit"), i -> { if (i == 0) newGame(); else if (i == 2) System.exit(0); });
     }
 
-    /** Maps game news and state to music tension and one-shot effects. */
+    void newGame() { timer.stop(); WarfareApp.showStart(frame, gs.world); }
+
     void audioCues() {
         int me = gs.player;
         int wars = 0;
@@ -227,7 +334,7 @@ final class GameUi extends JPanel {
             if (s.contains("NUCLEAR STRIKE") || s.contains("launches a nuclear")) Audio.get().play(Synth.Sfx.NUKE);
             else if (s.contains("WAR:") && s.contains(me3)) {
                 Audio.get().play(Synth.Sfx.WAR_HORN);
-                if (s.contains("on " + me3 + "!")) { map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle"); gs.pauseRequested = true; }
+                if (s.contains("on " + me3 + "!")) { map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle", "ALERT"); gs.pauseRequested = true; }
             }
             else if (s.contains("captures") && s.contains(me3)) Audio.get().play(Synth.Sfx.CAPTURE);
             else if (s.contains("Battle begins")) Audio.get().play(Synth.Sfx.BATTLE);
@@ -237,169 +344,99 @@ final class GameUi extends JPanel {
         if (!gs.pendingEvents.isEmpty()) Audio.get().play(Synth.Sfx.CHIME);
     }
 
+    // ------------------------------------------------------------------ decisions as in-game cards
+    void choose(String title, String icon, String text, List<String> options, IntConsumer pick) {
+        JComponent buttons = Modals.buttonColumn(options, i -> { modals.pop(); pick.accept(i); }, 0);
+        modals.push(Modals.card(title, icon, Modals.textBody(text, buttons), 500, 0, null));
+    }
+
+    void confirmCard(String title, String text, String yes, boolean danger, Runnable onYes) {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        row.setOpaque(false);
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        Wf.Button ok = danger ? Wf.danger(yes, null, () -> { modals.pop(); onYes.run(); }) : Wf.primary(yes, null, () -> { modals.pop(); onYes.run(); });
+        row.add(ok);
+        row.add(Wf.button("Cancel", null, () -> modals.pop()));
+        modals.push(Modals.card(title, danger ? "nuke" : "general", Modals.textBody(text, row), 480, 0, () -> modals.pop()));
+    }
+
     void handlePauses() {
         if (!gs.pauseRequested && gs.pendingEvents.isEmpty() && gs.awaitingTactic.isEmpty()) return;
         gs.pauseRequested = false;
         setPaused(true);
-        SwingUtilities.invokeLater(() -> {
-            for (Integer id : new ArrayList<>(gs.awaitingTactic)) {
-                Army a = gs.armies.get(id);
-                if (a == null || a.battleId < 0) { gs.awaitingTactic.remove(id); continue; }
-                askTactic(a);
-            }
-            for (GameEvent ev : new ArrayList<>(gs.pendingEvents)) {
-                Object[] opts = ev.options.toArray();
-                int c = JOptionPane.showOptionDialog(this, "<html><body style='width:320px'>" + SidePanels.esc(ev.text) + "</body></html>", ev.title,
-                        JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts, opts[0]);
-                gs.answerEvent(ev, c < 0 ? ev.options.size() - 1 : c);
-            }
-            map.refreshColors();
-            refresh();
-        });
+        SwingUtilities.invokeLater(this::showNextPrompt);
+    }
+
+    /** Shows the next pending tactic choice or event, one at a time. */
+    void showNextPrompt() {
+        if (modals.isOpen()) return;
+        for (Integer id : new ArrayList<>(gs.awaitingTactic)) {
+            Army a = gs.armies.get(id);
+            if (a == null || a.battleId < 0) { gs.awaitingTactic.remove(id); continue; }
+            askTactic(a);
+            return;
+        }
+        if (!gs.pendingEvents.isEmpty()) {
+            GameEvent ev = gs.pendingEvents.get(0);
+            choose(ev.title, "general", ev.text, ev.options, i -> { gs.answerEvent(ev, i); map.refreshColors(); refresh(); showNextPrompt(); });
+        }
     }
 
     void askTactic(Army a) {
         Combat.Battle b = gs.battles.get(a.battleId);
-        Army enemy = null;
-        if (b != null) enemy = gs.armies.get(b.attacker == a.id ? b.defender : b.attacker);
-        StringBuilder sb = new StringBuilder("<html><body style='width:340px'><b>Battle at " + SidePanels.esc(gs.prov(a.province).name) + "</b> (" + gs.prov(a.province).terrain + ")<br>");
-        sb.append(SidePanels.esc(a.name)).append(" (").append((int) a.totalUnits()).append(" battalions, morale ").append((int) a.morale).append(") ");
+        Army enemy = b == null ? null : gs.armies.get(b.attacker == a.id ? b.defender : b.attacker);
+        StringBuilder sb = new StringBuilder("Battle at " + gs.prov(a.province).name + " (" + gs.prov(a.province).terrain + ").\n");
+        sb.append(a.name).append(": ").append((int) a.totalUnits()).append(" battalions, morale ").append((int) a.morale).append(". ");
         if (enemy != null) {
             Intel.Sighting s = gs.intelOf(gs.player).sightingOf(enemy.id);
-            sb.append("faces ");
-            if (s == null) sb.append("an unseen enemy force.");
-            else if (s.composition != null) sb.append(SidePanels.esc(gs.nationName(s.owner))).append(" with ").append((int) Math.round(sum(s.composition))).append(" battalions - exact composition known.");
-            else sb.append(s.ownerKnown ? SidePanels.esc(gs.nationName(s.owner)) : "an unidentified force").append(", roughly ").append((int) Math.max(1, Math.round(s.strengthEstimate / 11.0))).append(" battalions.");
+            if (s == null) sb.append("The enemy force is unseen.");
+            else if (s.composition != null) sb.append(gs.nationName(s.owner)).append(" fields ").append((int) Math.round(sum(s.composition))).append(" battalions, composition known.");
+            else sb.append(s.ownerKnown ? gs.nationName(s.owner) : "An unidentified force").append(" - roughly ").append((int) Math.max(1, Math.round(s.strengthEstimate / 11.0))).append(" battalions.");
         }
-        sb.append("<br><br>Choose a tactic card, or let the General decide.</body></html>");
+        sb.append("\n\nChoose a tactic card, or let the General decide.");
         List<String> opts = new ArrayList<>();
         for (Tactic t : Tactic.values()) opts.add(t.label);
         opts.add("General decides (auto)");
-        int c = JOptionPane.showOptionDialog(this, sb.toString(), "Choose tactic", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, opts.toArray(), opts.get(opts.size() - 1));
-        if (c >= 0 && c < Tactic.values().length) gs.setTactic(a, Tactic.values()[c]);
-        else gs.setGeneralMode(a);
+        choose("Choose tactic", "battle", sb.toString(), opts, i -> {
+            if (i < Tactic.values().length) gs.setTactic(a, Tactic.values()[i]); else gs.setGeneralMode(a);
+            refresh(); showNextPrompt();
+        });
     }
 
     static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }
 
-    void refresh() {
-        if (map.tutorial != null) map.tutorial.update(this);
-        topBar.update(paused, speed);
-        int n = gs.news.size();
-        newsBar.setText(n == 0 ? " " : gs.news.get(n - 1));
-        updateVisibleTab();
-        map.repaint();
-    }
-
-    CountryMenu country;
-
-    /** Opens (or re-targets) the country screen for a nation, e.g. after clicking its capital star. */
+    // ------------------------------------------------------------------ country screen
     void openCountry(int nation) {
-        if (country != null && country.dialog != null) country.dialog.dispose();
-        country = new CountryMenu(frame, gs, nation, this::refresh, () -> { if (!economy.isVisible()) toggleEconomy(); });
-        country.show();
+        modals.clear();
+        country = new CountryMenu(gs, nation, this::refresh, () -> pick("economy"));
+        modals.push(country.card(() -> modals.pop()));
     }
 
-    void refreshTop() { topBar.update(paused, speed); }
-
-    void toggleEconomy() {
-        economy.setVisible(!economy.isVisible());
-        if (economyMenu != null) economyMenu.setSelected(economy.isVisible());
-        if (economy.isVisible()) economy.update();
-        revalidate(); repaint();
-        map.viewChanged();
-    }
+    // ------------------------------------------------------------------ refresh
+    void refreshTop() { hud.update(paused, speed); }
 
     void updateVisibleTab() {
-        if (economy.isVisible()) economy.update();
-        Component c = tabs.getSelectedComponent();
-        if (c == selection) selection.update();
-        else if (c == production) production.update();
-        else if (c == diplomacy) diplomacy.update();
-        else if (c == log) log.update();
+        if (openWindow != null) {
+            switch (openWindow) {
+                case "economy" -> economy.update();
+                case "production" -> production.update();
+                case "diplomacy" -> diplomacy.update();
+                case "reports" -> log.update();
+                default -> {}
+            }
+        }
+        if (map.tutorial != null) map.tutorial.update(this);
+        syncSelectionCard();
+        if (selectionCard.isVisible()) selection.update();
+        if (modals.isOpen() && country != null && modals.top() != null) country.refreshBody();
     }
 
-    JMenuBar menuBar() {
-        JMenuBar mb = new JMenuBar();
-        JMenu game = new JMenu("Game");
-        for (int slot = 1; slot <= 3; slot++) {
-            final int sl = slot;
-            JMenuItem save = new JMenuItem("Save to slot " + slot);
-            save.addActionListener(e -> {
-                try { gs.save(savePath(sl)); JOptionPane.showMessageDialog(this, "Saved to slot " + sl + "."); }
-                catch (Exception ex) { JOptionPane.showMessageDialog(this, "Save failed: " + ex.getMessage()); }
-            });
-            save.setEnabled(!gs.ironman);
-            game.add(save);
-        }
-        for (int slot = 1; slot <= 3; slot++) {
-            final int sl = slot;
-            JMenuItem load = new JMenuItem("Load slot " + slot);
-            load.addActionListener(e -> {
-                try {
-                    GameState g2 = GameState.load(savePath(sl), gs.world);
-                    WarfareApp.install(frame, new GameUi(g2, frame));
-                } catch (Exception ex) { JOptionPane.showMessageDialog(this, "No save in slot " + sl + "."); }
-            });
-            load.setEnabled(!gs.ironman);
-            game.add(load);
-        }
-        JMenuItem loadAuto = new JMenuItem(gs.ironman ? "Resume ironman save" : "Load autosave");
-        loadAuto.addActionListener(e -> {
-            try { WarfareApp.install(frame, new GameUi(GameState.load(savePath(gs.ironman ? "ironman" : "autosave"), gs.world), frame)); }
-            catch (Exception ex) { JOptionPane.showMessageDialog(this, "No autosave yet."); }
-        });
-        game.add(loadAuto);
-        JMenuItem ach = new JMenuItem("Achievements...");
-        ach.addActionListener(e -> AchievementsDialog.show(frame));
-        game.add(ach);
-        game.addSeparator();
-        JMenuItem settings = new JMenuItem("Settings...");
-        settings.addActionListener(e -> SettingsDialog.show(frame, this));
-        game.add(settings);
-        JMenuItem nw = new JMenuItem("New game...");
-        nw.addActionListener(e -> { timer.stop(); WarfareApp.start(frame, gs.world, WarfareApp.chooseNation(frame, gs.world)); });
-        game.add(nw);
-        JMenuItem quit = new JMenuItem("Quit");
-        quit.addActionListener(e -> System.exit(0));
-        game.add(quit);
-        mb.add(game);
-
-        JMenu view = new JMenu("View");
-        ButtonGroup bg = new ButtonGroup();
-        for (MapPanel.Mode m : MapPanel.Mode.values()) {
-            JRadioButtonMenuItem it = new JRadioButtonMenuItem(m.label + " map (M)", m == map.mode);
-            it.addActionListener(e -> map.setMode(m));
-            bg.add(it); view.add(it);
-        }
-        view.addSeparator();
-        JCheckBoxMenuItem side = new JCheckBoxMenuItem("Show side panel", true);
-        side.addActionListener(e -> { showSide = side.isSelected(); tabs.setVisible(showSide); revalidate(); });
-        JCheckBoxMenuItem newsItem = new JCheckBoxMenuItem("Show news bar", true);
-        newsItem.addActionListener(e -> { showNews = newsItem.isSelected(); newsBar.setVisible(showNews); revalidate(); });
-        JCheckBoxMenuItem eco = new JCheckBoxMenuItem("Economy panel (E)", false);
-        eco.addActionListener(e -> { if (eco.isSelected() != economy.isVisible()) toggleEconomy(); });
-        economyMenu = eco;
-        view.add(eco); view.add(side); view.add(newsItem);
-        mb.add(view);
-
-        JMenu help = new JMenu("Help");
-        JMenuItem tut = new JMenuItem("Restart tutorial");
-        tut.addActionListener(e -> { map.tutorial.restart(gs.day); map.repaint(); });
-        help.add(tut);
-        JMenuItem keys = new JMenuItem("Controls");
-        keys.addActionListener(e -> JOptionPane.showMessageDialog(this,
-                "Space: pause / play      1-5: game speed      M: cycle map mode      Esc: deselect army\n"
-                        + "Arrow keys / WASD: pan      + / -: zoom      E: economy panel\n"
-                        + "Left-click an army flag to select it; right-click a province to march there.\n"
-                        + "Left-click a province to inspect it; click a capital star for that country's screen.\n"
-                        + "Mouse wheel: zoom.   Drag: pan.   F3: performance overlay.\n\n"
-                        + "Fog of war: you only see what your units, provinces, radar, aircraft, agents,\n"
-                        + "satellites and allies reveal. Old sightings fade and expire after 45 days.\n\n"
-                        + "Battles: choose a tactic card per army, or leave the army on General (auto)."));
-        help.add(keys);
-        mb.add(help);
-        return mb;
+    void refresh() {
+        hud.update(paused, speed);
+        int n = gs.news.size();
+        news.set(n == 0 ? "" : gs.news.get(n - 1));
+        updateVisibleTab();
+        map.repaint();
     }
 
     static Path savePath(int slot) { return savePath("slot" + slot); }

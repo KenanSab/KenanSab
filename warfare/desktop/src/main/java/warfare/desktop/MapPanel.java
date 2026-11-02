@@ -39,6 +39,7 @@ final class MapPanel extends JPanel {
     Runnable onOrder = () -> {};
     Tutorial tutorial;
     int raidArmy = -1;
+    int rightInset;
     java.util.function.IntConsumer onCapital = n -> {};
     private final List<Rectangle> capRects = new ArrayList<>(), modeRects = new ArrayList<>();
     private final List<Integer> capNations = new ArrayList<>();
@@ -76,7 +77,7 @@ final class MapPanel extends JPanel {
 
     private void drawToasts(Graphics2D g) {
         long now = System.currentTimeMillis();
-        int y = 12;
+        int y = 78;
         for (Toast t : toasts) {
             double life = (t.until - now) / 5200.0;
             float a = (float) Math.max(0, Math.min(1, Math.min(life * 6, (1 - life) * 8)));
@@ -106,9 +107,8 @@ final class MapPanel extends JPanel {
     MapPanel(GameState gs, Path mapDir) {
         this.gs = gs; this.w = gs.world;
         setBackground(new Color(10, 24, 46));
-        try { shapes = MapShapes.load(mapDir.resolve("arcs.bin.gz"), w.provinces.size()); }
-        catch (Exception e) { throw new IllegalStateException("cannot load map shapes", e); }
-        basemap = new Basemap(shapes, w);
+        shapes = WarfareApp.shapes(w);
+        basemap = WarfareApp.basemap(w);
         fillArgb = new int[w.provinces.size()];
         arcClass = new byte[shapes.p1.length];
         buildLabels();
@@ -630,11 +630,11 @@ final class MapPanel extends JPanel {
         FontMetrics fm = g.getFontMetrics();
         int wd = fm.stringWidth(t) + 24;
         g.setColor(new Color(8, 14, 26, 190));
-        g.fillRoundRect((getWidth() - wd) / 2, getHeight() - 96, wd, 24, 10, 10);
+        g.fillRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
         g.setColor(new Color(255, 255, 255, 40));
-        g.drawRoundRect((getWidth() - wd) / 2, getHeight() - 96, wd, 24, 10, 10);
+        g.drawRoundRect((getWidth() - wd) / 2, getHeight() - 132, wd, 24, 10, 10);
         g.setColor(new Color(225, 232, 244));
-        g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 79);
+        g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 115);
     }
 
     // ------------------------------------------------------------------ input
@@ -739,7 +739,7 @@ final class MapPanel extends JPanel {
             g.drawString(label, r.x + (r.width - g.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
         }
         // zoom and home buttons, bottom right
-        int bx = getWidth() - 52, by = getHeight() - 168;
+        int bx = getWidth() - 52 - rightInset, by = getHeight() - 168;
         zoomInRect = new Rectangle(bx, by, 38, 38);
         zoomOutRect = new Rectangle(bx, by + 44, 38, 38);
         homeRect = new Rectangle(bx, by + 88, 38, 38);
