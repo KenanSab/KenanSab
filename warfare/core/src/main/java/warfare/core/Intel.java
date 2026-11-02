@@ -16,6 +16,7 @@ public final class Intel implements Serializable {
         public double strengthEstimate;      // HP-based, fuzzy at quality 2
         public double[] composition;         // null unless quality 3
         public boolean ownerKnown;
+        public boolean decoy;                // only true once quality 3 vision exposed it
     }
 
     public final byte[] quality;             // current-day vision quality per province

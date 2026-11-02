@@ -22,6 +22,7 @@ final class War {
                 for (int j = i + 1; j < list.size(); j++) {
                     Army a = list.get(i), b = list.get(j);
                     if (a.battleId >= 0 || b.battleId >= 0 || !hostile(gs, a, b)) continue;
+                    if (a.decoy || b.decoy) { expose(gs, a, b); continue; }
                     Army def, att;
                     int c = gs.controller[prov];
                     if (a.owner == c || (a.owner >= 0 && gs.isAlly(a.owner, c))) { def = a; att = b; }
@@ -31,6 +32,16 @@ final class War {
                 }
             }
         }
+    }
+
+    /** A decoy meets an enemy: the ruse is revealed, the decoy vanishes and the enemy loses a day of marching. */
+    static void expose(GameState gs, Army a, Army b) {
+        Army decoy = a.decoy ? a : b, other = a.decoy ? b : a;
+        if (other.decoy) return;                       // two decoys ignore each other
+        for (int i = 0; i < decoy.units.length; i++) decoy.units[i] = 0;
+        other.progressKm = 0;
+        if (decoy.owner == gs.player || other.owner == gs.player)
+            gs.news("A decoy force of " + gs.nationName(decoy.owner) + " was exposed at " + gs.prov(decoy.province).name + "; " + other.name + " lost time chasing it.");
     }
 
     static void start(GameState gs, Army att, Army def) {
@@ -127,7 +138,7 @@ final class War {
 
     static void occupation(GameState gs) {
         Map<Integer, List<Army>> byProv = new HashMap<>();
-        for (Army a : gs.armies.values()) if (!a.embarked && a.alive() && a.battleId < 0 && a.owner >= 0) byProv.computeIfAbsent(a.province, k -> new ArrayList<>()).add(a);
+        for (Army a : gs.armies.values()) if (!a.embarked && a.alive() && !a.decoy && a.battleId < 0 && a.owner >= 0) byProv.computeIfAbsent(a.province, k -> new ArrayList<>()).add(a);
         for (int p = 0; p < gs.P; p++) {
             if (gs.isSea(p)) continue;
             List<Army> here = byProv.get(p);
@@ -166,7 +177,7 @@ final class War {
     static void mergeStacks(GameState gs) {
         Map<String, Army> keep = new HashMap<>();
         for (Army a : new ArrayList<>(gs.armies.values())) {
-            if (!a.path.isEmpty() || a.battleId >= 0 || !a.alive() || a.owner < 0) continue;
+            if (!a.path.isEmpty() || a.battleId >= 0 || !a.alive() || a.owner < 0 || a.decoy) continue;
             String key = a.owner + ":" + a.province + ":" + a.embarked;
             Army k = keep.get(key);
             if (k == null) { keep.put(key, a); continue; }
@@ -178,7 +189,7 @@ final class War {
 
     static void unrest(GameState gs) {
         Set<Integer> garrisoned = new HashSet<>();
-        for (Army a : gs.armies.values()) if (a.owner >= 0 && a.battleId < 0 && !a.embarked && a.owner == gs.controller[a.province]) garrisoned.add(a.province);
+        for (Army a : gs.armies.values()) if (a.owner >= 0 && !a.decoy && a.battleId < 0 && !a.embarked && a.owner == gs.controller[a.province]) garrisoned.add(a.province);
         for (int p = 0; p < gs.P; p++) {
             if (gs.isSea(p)) continue;
             int o = gs.owner[p];

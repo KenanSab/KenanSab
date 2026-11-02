@@ -37,6 +37,8 @@ final class MapPanel extends JPanel {
     int selProv = -1, selArmy = -1, hoverProv = -1;
     Runnable onSelect = () -> {};
     Runnable onOrder = () -> {};
+    Tutorial tutorial;
+    int raidArmy = -1;
 
     private final int[] fillArgb;
     private final byte[] arcClass;          // 0 none, 1 coast, 2 national, 3 province, 4 sea zone
@@ -331,6 +333,7 @@ final class MapPanel extends JPanel {
         drawArmies(g);
         drawLegend(g);
         drawToasts(g);
+        if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
     }
 
     private Point2D.Double screen(int p) {
@@ -439,14 +442,14 @@ final class MapPanel extends JPanel {
             boolean own = a.owner == me;
             boolean allied = !own && a.owner >= 0 && gs.isAlly(me, a.owner) && in.quality[a.province] >= 2;
             if (!own && !allied) continue;
-            drawMarker(g, a.province, slot, w.nations.get(a.owner), String.valueOf((int) Math.round(a.totalUnits())),
+            drawMarker(g, a.province, slot, w.nations.get(a.owner), a.decoy ? a.fake + "*" : String.valueOf((int) Math.round(a.totalUnits())),
                     a.id, own, 1f, a.battleId >= 0, false);
         }
         for (Intel.Sighting s : in.activeSightings(gs.day)) {
             if (s.quality <= 1 && zoom < 4.5) continue;   // bare contacts only clutter the strategic view
             double conf = Math.max(0.3, Intel.confidence(gs.day - s.day) * 1.1);
             WorldData.NationInfo ni = s.ownerKnown && s.owner >= 0 ? w.nations.get(s.owner) : null;
-            String text = s.quality >= 3 ? String.valueOf((int) Math.round(Math.max(1, sum(s.composition))))
+            String text = s.decoy ? "decoy" : s.quality >= 3 ? String.valueOf((int) Math.round(Math.max(1, sum(s.composition))))
                     : s.quality == 2 ? "~" + (int) Math.max(1, Math.round(s.strengthEstimate / 11.0)) : "?";
             drawMarker(g, s.province, slot, ni, text, s.armyId, false, (float) Math.min(1.0, conf), false, gs.day != s.day);
         }
@@ -510,6 +513,7 @@ final class MapPanel extends JPanel {
     }
 
     private void click(MouseEvent e) {
+        if (tutorial != null && tutorial.click(e.getPoint())) { repaint(); return; }
         for (int i = hits.size() - 1; i >= 0; i--) {
             Hit h = hits.get(i);
             if (h.r.contains(e.getPoint()) && SwingUtilities.isLeftMouseButton(e)) {
@@ -522,6 +526,18 @@ final class MapPanel extends JPanel {
         }
         int id = provinceAt(e.getX(), e.getY());
         if (id < 0) return;
+        if (raidArmy >= 0 && SwingUtilities.isLeftMouseButton(e)) {
+            Army raider = gs.armies.get(raidArmy);
+            raidArmy = -1;
+            if (raider != null) {
+                GameState.Result r = gs.raid(raider, id);
+                Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
+                toast(r.ok ? "Raid successful" : "Raid", r.message, "special");
+                onOrder.run();
+            }
+            repaint();
+            return;
+        }
         Army sel = gs.armies.get(selArmy);
         if (SwingUtilities.isLeftMouseButton(e) && sel != null && sel.owner == gs.player) {
             // click army, then click destination

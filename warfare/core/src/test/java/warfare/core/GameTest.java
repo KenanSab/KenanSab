@@ -276,4 +276,59 @@ class GameTest {
         back.advanceDay();
         checkInvariants(back, "after load");
     }
+
+    @Test
+    void decoysFoolTheFarSightAndAreExposedUpClose() {
+        GameState gs = game("FRA");
+        int me = gs.player, enemy = world.nationByTag.get("RUS");
+        gs.armies.clear();
+        int home = world.nations.get(me).capital;
+        // an enemy decoy of "9 battalions" inside our territory, seen at estimate quality only
+        Army d = place(gs, enemy, home, 1, 0);
+        d.decoy = true; d.fake = 9; d.name = "decoy";
+        Vision.updateAll(gs);
+        Intel.Sighting s = gs.intel[me].sightingOf(d.id);
+        assertNotNull(s);
+        assertTrue(s.strengthEstimate > 60, "looks like a big army: " + s.strengthEstimate);
+        assertFalse(s.decoy);
+        // our own army in the same province gives exact vision: the ruse is exposed
+        place(gs, me, home, 5, 0);
+        Vision.updateAll(gs);
+        assertTrue(gs.intel[me].sightingOf(d.id).decoy);
+        // at war, contact removes the decoy without a battle and stalls the enemy
+        gs.war[me][enemy] = gs.war[enemy][me] = true;
+        War.contacts(gs);
+        gs.armies.values().removeIf(a -> !a.alive());
+        assertTrue(gs.battles.isEmpty());
+        assertFalse(gs.armies.containsKey(d.id));
+    }
+
+    @Test
+    void decoyDeploymentCostsMoneyAndIsCapped() {
+        GameState gs = game("FRA");
+        int home = world.nations.get(gs.player).capital;
+        double before = gs.ns[gs.player].money;
+        assertTrue(gs.deployDecoy(gs.player, home, 8).ok);
+        assertEquals(before - 16, gs.ns[gs.player].money, 1e-6);
+        for (int i = 0; i < 3; i++) assertTrue(gs.deployDecoy(gs.player, home, 4).ok);
+        assertFalse(gs.deployDecoy(gs.player, home, 4).ok, "cap of four decoys");
+    }
+
+    @Test
+    void sabotageRaidsSucceedSometimesAndCostUnitsWhenTheyFail() {
+        int wins = 0, fails = 0;
+        for (int seed = 0; seed < 40; seed++) {
+            GameState gs = new GameState(world, world.nationByTag.get("RUS"), 500 + seed);
+            int me = gs.player, foe = world.nationByTag.get("UKR");
+            gs.war[me][foe] = gs.war[foe][me] = true;
+            int target = world.nations.get(foe).capital;
+            Army a = place(gs, me, target, 4, 0);
+            a.units[UnitType.SPECIAL_FORCES.ordinal()] = 2;
+            gs.fort[target] = 2;
+            GameState.Result r = gs.raid(a, target);
+            if (r.ok) { wins++; assertEquals(1, gs.fort[target]); } else { fails++; assertEquals(1, a.units[UnitType.SPECIAL_FORCES.ordinal()], 1e-9); }
+            assertFalse(gs.raid(a, target).ok, "cooldown");
+        }
+        assertTrue(wins > 5 && fails > 5, "wins " + wins + " fails " + fails);
+    }
 }

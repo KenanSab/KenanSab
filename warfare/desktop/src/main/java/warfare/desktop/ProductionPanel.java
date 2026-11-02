@@ -59,6 +59,14 @@ final class ProductionPanel extends JPanel {
             refreshAll.run();
         });
         content.add(Ui.row(go));
+        content.add(Ui.gap(0, 6));
+        JButton decoy = Ui.button("Deploy decoy force (8 bns, 16 money)", "hidden", () -> {
+            if (map.selProv < 0) { SidePanels.message(this, new GameState.Result(false, "Select one of your provinces first.")); return; }
+            SidePanels.message(this, gs.deployDecoy(gs.player, map.selProv, 8));
+            refreshAll.run();
+        });
+        decoy.setToolTipText("Enemies who see it from afar read it as a real army. Close-up vision exposes it.");
+        content.add(Ui.row(decoy));
 
         content.add(Ui.section("Research"));
         for (Track t : Track.values()) content.add(researchCard(t));

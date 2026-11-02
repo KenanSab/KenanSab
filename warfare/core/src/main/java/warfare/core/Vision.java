@@ -111,8 +111,9 @@ public final class Vision {
             s.armyId = a.id; s.province = a.province; s.day = gs.day; s.quality = q;
             s.ownerKnown = q >= 2;
             s.owner = a.owner;
-            double hp = a.hp();
-            if (q >= 3) { s.strengthEstimate = hp; s.composition = a.units.clone(); }
+            double hp = a.decoy ? a.fake * 11.0 : a.hp();
+            s.decoy = a.decoy && q >= 3;
+            if (q >= 3) { s.strengthEstimate = hp; s.composition = a.decoy ? a.units.clone() : a.units.clone(); }
             else if (q == 2) { s.strengthEstimate = hp * (1 + fuzz(a.id, gs.day / 4) * 0.3); s.composition = null; }
             else { s.strengthEstimate = 0; s.composition = null; s.ownerKnown = false; }
             refreshed.add(a.id);

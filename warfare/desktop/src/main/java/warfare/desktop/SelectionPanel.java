@@ -139,6 +139,14 @@ final class SelectionPanel extends JPanel {
     // ------------------------------------------------------------------ army
     private void army(Army a, boolean own) {
         content.add(header(a.owner, a.name, gs.nationName(a.owner) + "  -  " + gs.prov(a.province).name));
+        if (a.decoy) {
+            content.add(Ui.pill("DECOY FORCE", Ui.AMBER));
+            content.add(Ui.gap(0, 8));
+            content.add(Ui.label("<html>From a distance enemies read this as <b>" + a.fake + " battalions</b>. Close-up vision exposes it, and it vanishes on contact, wasting the enemy's time. It cannot fight, occupy or garrison.</html>", 13f, Ui.MUTED));
+            content.add(Ui.gap(0, 8));
+            if (own) content.add(Ui.row(Ui.label("Left-click a province to march it.", 12.5f, Ui.MUTED)));
+            return;
+        }
         if (a.battleId >= 0) content.add(Ui.pill("IN BATTLE", Ui.RED));
         else if (!a.path.isEmpty()) content.add(Ui.pill("MARCHING  -  " + a.path.size() + " PROVINCES", Ui.ACCENT));
         else content.add(Ui.pill(a.embarked ? "AT SEA" : "HOLDING POSITION", Ui.MUTED));
@@ -173,6 +181,18 @@ final class SelectionPanel extends JPanel {
             for (Tactic o : Tactic.values()) if (t.beats(o)) beats.append(beats.length() > 0 ? ", " : "").append(o.label.split(" /")[0]);
             content.add(tacticCard(TACTIC_ICON[t.ordinal()], t.label, t.description, "Counters: " + beats, a.mode == Army.Mode.MANUAL && a.tactic == t, () -> gs.setTactic(a, t)));
         }
+        if (a.units[UnitType.SPECIAL_FORCES.ordinal()] >= 1) {
+            content.add(Ui.section("Special operations"));
+            String cd = a.raidCooldown > 0 ? "Recovering: " + a.raidCooldown + " days" : "Sabotage forts, factories, radar or airfields within 450 km.";
+            Ui.Card rc = new Ui.Card(new BorderLayout());
+            JPanel rt = Ui.column();
+            rt.add(Ui.label("Sabotage raid", 14.5f, Ui.TEXT));
+            rt.add(Ui.label(cd, 12f, Ui.MUTED));
+            rc.add(Ui.row(Ui.imageLabel(Assets.icon("special", 30, a.raidCooldown > 0 ? Ui.MUTED : Ui.AMBER)), Ui.gap(10, 0), rt), BorderLayout.CENTER);
+            if (a.raidCooldown <= 0) rc.onClick(() -> { map.raidArmy = a.id; map.toast("Raid ordered", "Left-click an enemy province to strike.", "special"); refreshAll.run(); });
+            content.add(rc);
+            content.add(Ui.gap(0, 4));
+        }
         content.add(Ui.gap(0, 6));
         JPanel actions = Ui.row(Ui.button("Split army in half", "split", () -> { SidePanels.message(this, gs.splitArmy(a, 0.5)); refreshAll.run(); }));
         content.add(actions);
@@ -199,6 +219,7 @@ final class SelectionPanel extends JPanel {
     private void sighting(Intel.Sighting s) {
         int age = gs.day - s.day;
         content.add(header(s.ownerKnown ? s.owner : -1, s.ownerKnown ? gs.nationName(s.owner) : "Unidentified force", "Last seen in " + gs.prov(s.province).name));
+        if (s.decoy) content.add(Ui.pill("DECOY EXPOSED - NOT A REAL FORCE", Ui.GREEN));
         content.add(Ui.pill(age == 0 ? "VISIBLE NOW" : age + " DAYS OLD  -  " + (int) (100 * Intel.confidence(age)) + "% RELIABLE", age == 0 ? Ui.GREEN : Ui.AMBER));
         content.add(Ui.gap(0, 8));
         Ui.Card c = new Ui.Card(new BorderLayout());

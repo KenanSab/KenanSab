@@ -35,6 +35,7 @@ final class GameUi extends JPanel {
         production = new ProductionPanel(gs, map, refresh);
         diplomacy = new SidePanels.Diplomacy(gs, map, refresh);
         log = new SidePanels.Log(gs);
+        map.tutorial = new Tutorial(Settings.tutorial && gs.day < 3, gs.day);
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
         tabs.addTab("Selection", Assets.swingIcon("tab_select", 18, Ui.TEXT), selection);
@@ -212,6 +213,7 @@ final class GameUi extends JPanel {
     static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }
 
     void refresh() {
+        if (map.tutorial != null) map.tutorial.update(this);
         topBar.update(paused, speed);
         int n = gs.news.size();
         newsBar.setText(n == 0 ? " " : gs.news.get(n - 1));
@@ -291,6 +293,9 @@ final class GameUi extends JPanel {
         mb.add(view);
 
         JMenu help = new JMenu("Help");
+        JMenuItem tut = new JMenuItem("Restart tutorial");
+        tut.addActionListener(e -> { map.tutorial.restart(gs.day); map.repaint(); });
+        help.add(tut);
         JMenuItem keys = new JMenuItem("Controls");
         keys.addActionListener(e -> JOptionPane.showMessageDialog(this,
                 "Space: pause / play      1-5: game speed      M: cycle map mode      Esc: deselect army\n"

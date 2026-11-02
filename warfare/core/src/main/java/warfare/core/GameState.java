@@ -525,6 +525,46 @@ public final class GameState implements Serializable {
         return ok("Missile launched. Impact in 1 day.");
     }
 
+    /** Cheap fake army: from afar it reads as {@code fake} battalions; close-up vision exposes it. */
+    public Result deployDecoy(int n, int province, int fake) {
+        if (owner[province] != n || controller[province] != n) return no("You must own and control that province.");
+        int existing = 0;
+        for (Army a : armies.values()) if (a.owner == n && a.decoy) existing++;
+        if (existing >= 4) return no("You already field 4 decoy forces.");
+        double cost = fake * 2.0;
+        if (ns[n].money < cost) return no(String.format("Need %.0f money.", cost));
+        ns[n].money -= cost;
+        Army a = new Army(nextArmyId++, n, province, "Decoy Force " + nextArmyId);
+        a.units[UnitType.INFANTRY.ordinal()] = 1;
+        a.decoy = true; a.fake = fake; a.morale = 60;
+        armies.put(a.id, a);
+        return ok("Decoy deployed. Enemies far away will read it as " + fake + " battalions.");
+    }
+
+    /** Special forces strike an enemy province's installations. Risky: failure costs a special forces unit. */
+    public Result raid(Army a, int target) {
+        int sf = UnitType.SPECIAL_FORCES.ordinal();
+        if (a.units[sf] < 1) return no("This army has no special forces.");
+        if (a.raidCooldown > 0) return no("Special forces are recovering (" + a.raidCooldown + " days).");
+        if (isSea(target) || !atWar(a.owner, owner[target])) return no("Raids need a land province of a nation you are at war with.");
+        if (dist(a.province, target) > 450) return no("Target is out of reach (450 km).");
+        a.raidCooldown = 12;
+        double chance = 0.45 + 0.12 * Math.min(3, a.units[sf]) + 0.03 * ns[a.owner].tech[0];
+        if (fort[target] > 0) chance -= 0.08 * fort[target];
+        if (rng.nextDouble() < chance) {
+            String hit = "supply depots";
+            if (fort[target] > 0) { fort[target]--; hit = "fortifications"; }
+            else if (factory[target] > 0) { factory[target]--; hit = "a factory"; }
+            else if (radar[target] > 0) { radar[target]--; hit = "a radar station"; }
+            else if (airfield[target] > 0) { airfield[target]--; hit = "an airfield"; }
+            else unrest[target] = Math.min(100, unrest[target] + 10);
+            news("Special forces sabotaged " + hit + " in " + prov(target).name + ".");
+            return ok("Raid succeeded: " + hit + " destroyed.");
+        }
+        a.units[sf] -= 1;
+        return no("The raid failed and a special forces unit was lost.");
+    }
+
     public void setTactic(Army a, Tactic t) { a.mode = Army.Mode.MANUAL; a.tactic = t; awaitingTactic.remove(a.id); }
     public void setGeneralMode(Army a) { a.mode = Army.Mode.GENERAL; a.tactic = null; awaitingTactic.remove(a.id); }
 
@@ -627,6 +667,7 @@ public final class GameState implements Serializable {
     }
 
     void movement() {
+        for (Army a : armies.values()) if (a.raidCooldown > 0) a.raidCooldown--;
         for (Army a : new ArrayList<>(armies.values())) {
             if (a.path.isEmpty() || a.battleId >= 0 || !a.alive()) continue;
             NationState s = a.owner >= 0 ? ns[a.owner] : null;
