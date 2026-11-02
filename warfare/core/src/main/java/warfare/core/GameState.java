@@ -540,6 +540,27 @@ public final class GameState implements Serializable {
         return ok("Alliance dissolved.");
     }
 
+    /** Democracies and republics may call an election at once: a gamble that resets the four-year clock. */
+    public Result callElection(int n) {
+        NationState s = ns[n];
+        if (!s.gov.elections) return no(s.gov.label + "s do not hold elections.");
+        if (day < s.nextElection - 1200) return no("An election was held recently. Wait for the public mood to change.");
+        s.nextElection = day;
+        return ok("Early elections called. The result will be known tomorrow.");
+    }
+
+    /** Seize emergency powers: no more elections and less war weariness, at a heavy cost in stability. */
+    public Result seizePower(int n) {
+        NationState s = ns[n];
+        if (s.gov == Government.AUTOCRACY || s.gov == Government.JUNTA || s.gov == Government.ONE_PARTY) return no("You already rule without elections.");
+        s.gov = Government.AUTOCRACY;
+        s.stability = Math.max(0, s.stability - 15);
+        s.nextElection = Integer.MAX_VALUE;
+        for (int c = 0; c < N; c++) if (c != n) Relations.change(this, c, n, -10);
+        news(nationName(n) + " suspends its constitution. Emergency powers are declared.");
+        return ok("Emergency powers declared. Stability -15; the world is watching.");
+    }
+
     public Result toggleSanction(int a, int b) {
         sanction[a][b] = !sanction[a][b];
         if (sanction[a][b]) { news(nationName(a) + " imposes sanctions on " + nationName(b) + "."); Relations.change(this, b, a, -25); }

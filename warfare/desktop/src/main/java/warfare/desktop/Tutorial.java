@@ -13,13 +13,13 @@ final class Tutorial {
     static final List<Step> STEPS = List.of(
             new Step("Welcome, Commander", "This is the strategic map. Drag to pan and use the mouse wheel to zoom. Every province is a real administrative region.", "general", false),
             new Step("Start the clock", "Press SPACE (or the round button) to run time. Keys 1-5 change the speed. The game is real time, and you can pause and give orders any moment.", "time", true),
-            new Step("Select an army", "Click one of your army flags on the map. The right panel shows its units, morale and battle orders.", "battle", true),
-            new Step("March", "With an army selected, left-click any province to march there. The dashed line shows the route. Armies fight when they meet an enemy.", "t_flank", true),
+            new Step("Select an army", "Left-click one of your army flags on the map. The right panel shows its units, morale and battle orders.", "battle", true),
+            new Step("March", "With an army selected, RIGHT-click any province to march there. The dashed line shows the route. Armies fight when they meet an enemy.", "t_flank", true),
             new Step("Fog of war", "You only see what your units, provinces, radar, aircraft, agents and allies reveal. Press M until the Intel map shows: green is exact, lime an estimate, amber a contact, dark unseen. Old sightings fade.", "recon", true),
             new Step("Tactic cards", "In a battle, each army uses a tactic card. Every card counters two others, and unit mix, terrain and surprise matter. Pick cards yourself, or leave the army on General (auto), which only uses what you can see.", "t_ambush", false),
             new Step("Build and recruit", "The Production tab recruits forces, researches upgrades and forms air wings. Provinces you own can build factories, forts, radar and more.", "industry", false),
             new Step("The economy panel", "Press E or the Economy button for the budget: tax rate, development, infrastructure, education, welfare, security and military funding, plus mobilization, fuel rationing and money printing. Stars on the map mark capitals.", "money", false),
-            new Step("Diplomacy and spies", "The Diplomacy tab handles war, negotiated peace, alliances, sanctions and agents. Agents inside a country reveal secret pacts and its forces.", "spy", false),
+            new Step("Diplomacy and spies", "The Diplomacy tab handles war, negotiated peace, alliances, sanctions and agents. Agents inside a country reveal secret pacts and its forces. Click any capital star for that country's screen: government, approval, relations and military.", "spy", false),
             new Step("You are ready", "This is a sandbox with no fixed end. Watch stability, oil and morale, and keep your intelligence fresh. Good luck.", "trophy", false));
 
     int step;

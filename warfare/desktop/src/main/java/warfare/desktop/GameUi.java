@@ -38,6 +38,8 @@ final class GameUi extends JPanel {
         diplomacy = new SidePanels.Diplomacy(gs, map, refresh);
         log = new ReportsPanel(gs);
         map.tutorial = new Tutorial(Settings.tutorial && gs.day < 3, gs.day);
+        map.onCapital = this::openCountry;
+        diplomacy.onOpen = this::openCountry;
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
         tabs.addTab("Selection", Assets.swingIcon("tab_select", 18, Ui.TEXT), selection);
@@ -63,13 +65,20 @@ final class GameUi extends JPanel {
         south.add(newsBar, BorderLayout.CENTER);
         south.setBorder(BorderFactory.createEmptyBorder(5, 12, 5, 12));
         add(south, BorderLayout.SOUTH);
-        timer = new Timer(DAY_MS(), e -> tick());
+        timer = new Timer(16, e -> frame());
         timer.setRepeats(true);
         bindKeys();
         refresh();
     }
 
-    int DAY_MS() { return WarfareApp.DAY_MS[speed - 1]; }
+    /** Game days per real second at each speed setting. */
+    static final double[] DAYS_PER_SEC = {1, 2.5, 5, 10, 22};
+    private double acc;
+    private long lastNanos;
+    long frames, frameNsTotal;
+    double daysPerSecNow;
+    private long perfWindowStart = System.nanoTime();
+    private int perfDays;
 
     void focusStart() {
         SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, 3.5); map.selProv = gs.world.nations.get(gs.player).capital; refresh(); });
@@ -97,6 +106,8 @@ final class GameUi extends JPanel {
         for (int k : new int[]{KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomout");
         am.put("zoomin", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(1.25); } });
         am.put("zoomout", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(0.8); } });
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_F3, 0), "perf");
+        am.put("perf", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.showPerf = !map.showPerf; map.repaint(); } });
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_E, 0), "economy");
         am.put("economy", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { toggleEconomy(); } });
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_M, 0), "mode");
@@ -108,30 +119,67 @@ final class GameUi extends JPanel {
 
     void setPaused(boolean p) {
         paused = p;
-        if (p) timer.stop(); else timer.start();
+        if (p) timer.stop(); else { lastNanos = System.nanoTime(); acc = 0; timer.start(); }
         refresh();
     }
 
-    void setSpeed(int s) { speed = s; timer.setDelay(DAY_MS()); if (paused) setPaused(false); else refresh(); }
+    void setSpeed(int s) { speed = s; if (paused) setPaused(false); else refresh(); }
 
     static long simNs, colorNs, uiNs, ticks;
-    private long lastRefresh;
     private int seenNews;
 
-    void tick() {
+    /** Timer callback: advance the simulation by elapsed real time (so speed does not depend on frame rate), then repaint once. */
+    void frame() {
+        long now = System.nanoTime();
+        double dt = Math.min(0.12, (now - lastNanos) / 1e9);
+        lastNanos = now;
+        acc += dt * DAYS_PER_SEC[speed - 1];
+        int steps = 0;
+        while (acc >= 1 && steps < 6 && !gs.pauseRequested) { stepOnce(); acc -= 1; steps++; }
+        if (acc > 2) acc = 2;                       // never try to catch up a long backlog
+        if (steps > 0) finishFrame(steps);
+        long took = System.nanoTime() - now;
+        frames++; frameNsTotal += took;
+    }
+
+    /** One game day: simulation plus the cheap per-day bookkeeping. */
+    private void stepOnce() {
         long t0 = System.nanoTime();
         gs.advanceDay();
-        long t1 = System.nanoTime();
-        map.refreshColors();
-        long t2 = System.nanoTime();
-        long now = System.currentTimeMillis();
-        if (now - lastRefresh >= 70 || paused) { refresh(); lastRefresh = now; }
-        else topBar.update(paused, speed);
-        long t3 = System.nanoTime();
+        simNs += System.nanoTime() - t0;
+        ticks++;
+        perfDays++;
         audioCues();
         metaChecks();
-        simNs += t1 - t0; colorNs += t2 - t1; uiNs += t3 - t2; ticks++;
+    }
+
+    private void finishFrame(int steps) {
+        long t1 = System.nanoTime();
+        map.refreshColors();
+        colorNs += System.nanoTime() - t1;
+        long t2 = System.nanoTime();
+        refreshLight();
+        uiNs += System.nanoTime() - t2;
+        long w = System.nanoTime();
+        if (w - perfWindowStart > 1_000_000_000L) { daysPerSecNow = perfDays * 1e9 / (w - perfWindowStart); perfDays = 0; perfWindowStart = w; }
+        map.perf = String.format("%.0f days/s   sim %.1f ms/day   frame %.1f ms   map layers %.1f ms", daysPerSecNow, simNs / 1e6 / Math.max(1, ticks), frameNsTotal / 1e6 / Math.max(1, frames), map.renderNs / 1e6 / Math.max(1, map.renders));
         handlePauses();
+    }
+
+    private long lastPanel;
+
+    /** Cheap refresh used while time runs: top bar every frame, side panels a few times per second. */
+    private void refreshLight() {
+        topBar.update(paused, speed);
+        long now = System.currentTimeMillis();
+        if (now - lastPanel > 400) { lastPanel = now; updateVisibleTab(); int n = gs.news.size(); newsBar.setText(n == 0 ? " " : gs.news.get(n - 1)); }
+    }
+
+    /** One synchronous game day, used by tests and the headless harness. */
+    void tick() {
+        stepOnce();
+        finishFrame(1);
+        refresh();
     }
 
     private boolean gameOverShown;
@@ -143,7 +191,7 @@ final class GameUi extends JPanel {
         }
         if (gs.day % 5 == 0) {
             for (warfare.core.Achievements.Def d : Profile.check(gs)) {
-                map.toast(d.title(), d.description(), d.icon());
+                map.toast(d.title(), d.description(), d.icon(), "ACHIEVEMENT UNLOCKED");
                 Audio.get().play(Synth.Sfx.CAPTURE);
             }
         }
@@ -243,6 +291,15 @@ final class GameUi extends JPanel {
         map.repaint();
     }
 
+    CountryMenu country;
+
+    /** Opens (or re-targets) the country screen for a nation, e.g. after clicking its capital star. */
+    void openCountry(int nation) {
+        if (country != null && country.dialog != null) country.dialog.dispose();
+        country = new CountryMenu(frame, gs, nation, this::refresh, () -> { if (!economy.isVisible()) toggleEconomy(); });
+        country.show();
+    }
+
     void refreshTop() { topBar.update(paused, speed); }
 
     void toggleEconomy() {
@@ -334,8 +391,9 @@ final class GameUi extends JPanel {
         keys.addActionListener(e -> JOptionPane.showMessageDialog(this,
                 "Space: pause / play      1-5: game speed      M: cycle map mode      Esc: deselect army\n"
                         + "Arrow keys / WASD: pan      + / -: zoom      E: economy panel\n"
-                        + "Left-click an army marker, then left-click a province to march there.\n"
-                        + "Right-click: inspect a province.   Mouse wheel: zoom.   Drag: pan.\n\n"
+                        + "Left-click an army flag to select it; right-click a province to march there.\n"
+                        + "Left-click a province to inspect it; click a capital star for that country's screen.\n"
+                        + "Mouse wheel: zoom.   Drag: pan.   F3: performance overlay.\n\n"
                         + "Fog of war: you only see what your units, provinces, radar, aircraft, agents,\n"
                         + "satellites and allies reveal. Old sightings fade and expire after 45 days.\n\n"
                         + "Battles: choose a tactic card per army, or leave the army on General (auto)."));

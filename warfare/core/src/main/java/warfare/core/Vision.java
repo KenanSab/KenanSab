@@ -11,17 +11,21 @@ public final class Vision {
 
     static void raise(byte[] q, int p, int level) { if (q[p] < level) q[p] = (byte) level; }
 
-    /** Spread vision from a province: levels[d] is the quality at hop distance d. */
+    private static int[] stamp, queue, depth;
+    private static int stampId;
+
+    /** Spread vision from a province: levels[d] is the quality at hop distance d. Allocation-free BFS. */
     static void spread(GameState gs, int start, int[] levels, byte[] q) {
-        Map<Integer, Integer> seen = new HashMap<>();
-        Deque<Integer> frontier = new ArrayDeque<>();
-        seen.put(start, 0); frontier.add(start);
-        while (!frontier.isEmpty()) {
-            int p = frontier.poll();
-            int d = seen.get(p);
+        if (stamp == null || stamp.length != gs.P) { stamp = new int[gs.P]; queue = new int[gs.P]; depth = new int[gs.P]; stampId = 0; }
+        stampId++;
+        int head = 0, tail = 0;
+        queue[tail++] = start; stamp[start] = stampId; depth[start] = 0;
+        while (head < tail) {
+            int p = queue[head++];
+            int d = depth[p];
             raise(q, p, levels[d]);
             if (d + 1 >= levels.length) continue;
-            for (int nb : gs.world.provinces.get(p).neighbours) if (!seen.containsKey(nb)) { seen.put(nb, d + 1); frontier.add(nb); }
+            for (int nb : gs.world.provinces.get(p).neighbours) if (stamp[nb] != stampId) { stamp[nb] = stampId; depth[nb] = d + 1; queue[tail++] = nb; }
         }
     }
 

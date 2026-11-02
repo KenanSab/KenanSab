@@ -118,11 +118,28 @@ class UiSelfTest {
         }
         assertTrue(dest >= 0, "an own neighbouring province is visible on screen");
         final int target = dest;
-        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, new Point((int) map.screenOf(mine.province).x, (int) map.screenOf(mine.province).y)), MouseEvent.BUTTON1));
-        assertFalse(mine.path.isEmpty(), "second click issues the march order");
-        // right click deselects and inspects
-        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, null), MouseEvent.BUTTON3));
+        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, new Point((int) map.screenOf(mine.province).x, (int) map.screenOf(mine.province).y)), MouseEvent.BUTTON3));
+        assertFalse(mine.path.isEmpty(), "right-click issues the march order");
+        // left-clicking ground inspects the province and drops the army selection
+        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, null), MouseEvent.BUTTON1));
         assertEquals(-1, map.selArmy);
+        assertEquals(target, map.selProv);
+        // right-click without a selected army does nothing
+        mine.path.clear();
+        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, null), MouseEvent.BUTTON3));
+        assertTrue(mine.path.isEmpty());
+        // left-click on a capital star opens that country's screen
+        int usa = world.nationByTag.get("UKR");
+        int capProv = world.nations.get(usa).capital;
+        SwingUtilities.invokeAndWait(() -> map.centerOn(capProv, 3.2));
+        SwingUtilities.invokeAndWait(() -> map.paintImmediately(map.getBounds()));
+        SwingUtilities.invokeAndWait(() -> {
+            java.awt.geom.Point2D.Double sp = map.screenOf(capProv);
+            click(map, new Point((int) sp.x, (int) sp.y - 30), MouseEvent.BUTTON1);
+        });
+        Thread.sleep(300);
+        assertNotNull(ui[0].country, "capital star opened the country screen");
+        assertEquals(usa, ui[0].country.nation);
 
         // war with a manual army that has no tactic: the game must pause and ask
         int foe = world.nationByTag.get("UKR");

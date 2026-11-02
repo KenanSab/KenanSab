@@ -18,6 +18,7 @@ final class Assets {
 
     static Path root = Path.of("assets");
     private static final Map<String, BufferedImage> cache = new HashMap<>();
+    private static final Map<Integer, Map<String, BufferedImage>> flagCache = new HashMap<>();
 
     static void init(Path mapDir) { root = mapDir.resolve("..").normalize(); }
 
@@ -44,8 +45,10 @@ final class Assets {
     /** Flag with softly rounded corners and a thin edge. Width is given, height follows the 4:3 ratio. */
     static BufferedImage flag(String iso2, int w) {
         int h = Math.round(w * 0.75f);
-        String key = "flag|" + iso2 + "|" + w;
-        return cache.computeIfAbsent(key, k -> {
+        Map<String, BufferedImage> bySize = flagCache.computeIfAbsent(w, k -> new HashMap<>());
+        BufferedImage hit = bySize.get(iso2);
+        if (hit != null) return hit;
+        BufferedImage made = ((java.util.function.Supplier<BufferedImage>) () -> {
             BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = img.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -67,7 +70,9 @@ final class Assets {
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, arc, arc));
             g.dispose();
             return img;
-        });
+        }).get();
+        bySize.put(iso2, made);
+        return made;
     }
 
     static BufferedImage flag(WorldData.NationInfo n, int w) { return flag(n == null ? "" : n.iso2, w); }

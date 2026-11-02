@@ -39,6 +39,14 @@ final class MapPanel extends JPanel {
     Runnable onOrder = () -> {};
     Tutorial tutorial;
     int raidArmy = -1;
+    java.util.function.IntConsumer onCapital = n -> {};
+    private final List<Rectangle> capRects = new ArrayList<>(), modeRects = new ArrayList<>();
+    private final List<Integer> capNations = new ArrayList<>();
+    private Rectangle zoomInRect = new Rectangle(), zoomOutRect = new Rectangle(), homeRect = new Rectangle();
+    private Point mouse;
+    private int hoverOverlay = -1;
+    String perf = "";
+    boolean showPerf;
 
     private final int[] fillArgb;
     private final byte[] arcClass;          // 0 none, 1 coast, 2 national, 3 province, 4 sea zone
@@ -52,13 +60,15 @@ final class MapPanel extends JPanel {
     private Point dragFrom;
     private boolean dragged;
     private final List<Hit> hits = new ArrayList<>();
-    private record Toast(String title, String text, String icon, long until) {}
+    private record Toast(String title, String text, String icon, long until, String header) {}
     private final List<Toast> toasts = new ArrayList<>();
     private javax.swing.Timer toastTimer;
 
     /** Short pop-up in the top-right corner (achievements, notices). */
-    void toast(String title, String text, String icon) {
-        toasts.add(new Toast(title, text, icon, System.currentTimeMillis() + 5200));
+    void toast(String title, String text, String icon) { toast(title, text, icon, "NOTICE"); }
+
+    void toast(String title, String text, String icon, String header) {
+        toasts.add(new Toast(title, text, icon, System.currentTimeMillis() + 5200, header));
         if (toastTimer == null) { toastTimer = new javax.swing.Timer(60, e -> { toasts.removeIf(t -> t.until < System.currentTimeMillis()); repaint(); if (toasts.isEmpty()) toastTimer.stop(); }); }
         if (!toastTimer.isRunning()) toastTimer.start();
         repaint();
@@ -81,7 +91,7 @@ final class MapPanel extends JPanel {
             g.drawImage(Assets.icon(t.icon, 36, new Color(236, 192, 92)), x + 12, y + 13, null);
             g.setFont(Fonts.label(12.5f));
             g.setColor(new Color(236, 192, 92));
-            g.drawString("ACHIEVEMENT UNLOCKED", x + 58, y + 20);
+            g.drawString(t.header, x + 58, y + 20);
             g.setFont(Fonts.title(21f));
             g.setColor(Color.WHITE);
             g.drawString(t.title.toUpperCase(), x + 58, y + 40);
@@ -105,7 +115,8 @@ final class MapPanel extends JPanel {
         MouseAdapter ma = new MouseAdapter() {
             @Override public void mousePressed(MouseEvent e) { dragFrom = e.getPoint(); dragged = false; }
             @Override public void mouseDragged(MouseEvent e) {
-                if (dragFrom == null) return;
+                if (dragFrom == null || SwingUtilities.isRightMouseButton(e)) return;
+                mouse = e.getPoint();
                 int dx = e.getX() - dragFrom.x, dy = e.getY() - dragFrom.y;
                 if (Math.abs(dx) + Math.abs(dy) > 3) dragged = true;
                 if (dragged) { ox += dx; oy += dy; dragFrom = e.getPoint(); repaint(); }
@@ -115,9 +126,15 @@ final class MapPanel extends JPanel {
                 dragFrom = null;
             }
             @Override public void mouseMoved(MouseEvent e) {
+                mouse = e.getPoint();
                 int id = provinceAt(e.getX(), e.getY());
-                if (id != hoverProv) { hoverProv = id; repaint(); }
+                int ov = overlayAt(e.getPoint());
+                hoverProv = ov >= 0 ? -1 : id;
+                hoverOverlay = ov;
+                setCursor(ov >= 0 || capitalAt(e.getPoint()) >= 0 ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+                repaint();
             }
+            @Override public void mouseExited(MouseEvent e) { mouse = null; hoverProv = -1; hoverOverlay = -1; repaint(); }
             @Override public void mouseWheelMoved(MouseWheelEvent e) {
                 double f = e.getWheelRotation() < 0 ? 1.2 : 1 / 1.2;
                 double nz = Math.max(0.4, Math.min(16, zoom * f));
@@ -145,7 +162,7 @@ final class MapPanel extends JPanel {
         zoom = nz; viewDirty = true; repaint();
     }
 
-    void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); fillDirty = true; refreshColors(); repaint(); }
+    void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); fillFull = true; fillDirty = true; refreshColors(); repaint(); }
 
     // ------------------------------------------------------------------ labels
     /** One label per nation, placed over its largest contiguous landmass. */
@@ -178,13 +195,15 @@ final class MapPanel extends JPanel {
     }
 
     // ------------------------------------------------------------------ colours (fog of war lives here)
+    private final List<Integer> chFill = new ArrayList<>(), chArc = new ArrayList<>();
+    private boolean fillFull = true, borderFull = true;
+
     void refreshColors() {
         Intel in = gs.intelOf(gs.player);
         int me = gs.player;
-        boolean fillChanged = false, borderChanged = false;
         for (int p = 0; p < fillArgb.length; p++) {
             int c = colorOf(p, in, me);
-            if (c != fillArgb[p]) { fillArgb[p] = c; fillChanged = true; }
+            if (c != fillArgb[p]) { fillArgb[p] = c; if (!fillFull) { if (chFill.size() > 120) fillFull = true; else chFill.add(p); } fillDirty = true; }
         }
         for (int a = 0; a < arcClass.length; a++) {
             int p1 = shapes.p1[a], p2 = shapes.p2[a];
@@ -196,11 +215,9 @@ final class MapPanel extends JPanel {
                 else if (s1 != s2) cls = 1;
                 else cls = (byte) (in.knownOwner[p1] != in.knownOwner[p2] ? 2 : 3);
             }
-            if (cls != arcClass[a]) { arcClass[a] = cls; borderChanged = true; }
+            if (cls != arcClass[a]) { arcClass[a] = cls; if (!borderFull) { if (chArc.size() > 60) borderFull = true; else chArc.add(a); } borderDirty = true; }
         }
-        if (fillChanged) fillDirty = true;
-        if (borderChanged) borderDirty = true;
-        if (fillChanged || borderChanged) repaint();
+        if (fillDirty || borderDirty) repaint();
     }
 
     private static int argb(int rgb, double alpha) { return ((int) Math.max(0, Math.min(255, alpha * 255)) << 24) | (rgb & 0xFFFFFF); }
@@ -259,11 +276,35 @@ final class MapPanel extends JPanel {
         return g;
     }
 
+    private Rectangle screenRect(Rectangle2D.Float b, int pad) {
+        int x0 = (int) Math.floor(b.x * zoom + ox) - pad, y0 = (int) Math.floor(b.y * zoom + oy) - pad;
+        int x1 = (int) Math.ceil((b.x + b.width) * zoom + ox) + pad, y1 = (int) Math.ceil((b.y + b.height) * zoom + oy) + pad;
+        return new Rectangle(x0, y0, x1 - x0, y1 - y0);
+    }
+
+    private Rectangle2D worldRect(Rectangle r) {
+        return new Rectangle2D.Double((r.x - ox) / zoom, (r.y - oy) / zoom, r.width / zoom, r.height / zoom);
+    }
+
+    private void fillProvince(Graphics2D g, int p) {
+        g.setColor(new Color(fillArgb[p], true));
+        g.fill(shapes.fill[p]);
+    }
+
+    private void drawArcPasses(Graphics2D g, Rectangle2D worldView) {
+        if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 34), 0.8);
+        if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(14, 18, 26, 105), 0.9);
+        strokeArcs(g, worldView, 1, new Color(150, 196, 236, 55), 5.0);
+        strokeArcs(g, worldView, 2, new Color(8, 10, 16, 215), 1.7);
+        strokeArcs(g, worldView, 1, new Color(6, 14, 28, 230), 1.35);
+    }
+
     private void renderLayers() {
         long t0 = System.nanoTime();
         int W = Math.max(1, getWidth()), H = Math.max(1, getHeight());
         boolean resized = baseImg == null || baseImg.getWidth() != W || baseImg.getHeight() != H;
         boolean view = viewDirty || resized || layerZoom != zoom;
+        Rectangle screen = new Rectangle(0, 0, W, H);
         Rectangle2D worldView = new Rectangle2D.Double(-ox / zoom - 2, -oy / zoom - 2, W / zoom + 4, H / zoom + 4);
         if (view) {
             baseImg = fresh(baseImg, BufferedImage.TYPE_INT_RGB);
@@ -276,7 +317,7 @@ final class MapPanel extends JPanel {
             g.drawImage(basemap.image, at, null);
             g.dispose();
         }
-        if (view || fillDirty) {
+        if (view || fillFull) {
             fillImg = fresh(fillImg, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = hq(fillImg);
             g.setComposite(AlphaComposite.Clear);
@@ -285,14 +326,31 @@ final class MapPanel extends JPanel {
             g.translate(ox, oy);
             g.scale(zoom, zoom);
             for (int p = 0; p < fillArgb.length; p++) {
-                int c = fillArgb[p];
-                if ((c >>> 24) == 0 || !worldView.intersects(shapes.bounds[p])) continue;
-                g.setColor(new Color(c, true));
-                g.fill(shapes.fill[p]);
+                if ((fillArgb[p] >>> 24) == 0 || !worldView.intersects(shapes.bounds[p])) continue;
+                fillProvince(g, p);
             }
             g.dispose();
+            chFill.clear(); fillFull = false;
+        } else if (fillDirty && !chFill.isEmpty()) {
+            Graphics2D g = hq(fillImg);
+            for (int p : chFill) {
+                Rectangle r = screenRect(shapes.bounds[p], 3).intersection(screen);
+                if (r.isEmpty()) continue;
+                g.setTransform(new AffineTransform());
+                g.setClip(r);
+                g.setComposite(AlphaComposite.Clear);
+                g.fillRect(r.x, r.y, r.width, r.height);
+                g.setComposite(AlphaComposite.SrcOver);
+                g.translate(ox, oy);
+                g.scale(zoom, zoom);
+                Rectangle2D wr = worldRect(r);
+                for (int q = 0; q < fillArgb.length; q++)
+                    if ((fillArgb[q] >>> 24) != 0 && wr.intersects(shapes.bounds[q])) fillProvince(g, q);
+            }
+            g.dispose();
+            chFill.clear();
         }
-        if (view || borderDirty) {
+        if (view || borderFull) {
             borderImg = fresh(borderImg, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = hq(borderImg);
             g.setComposite(AlphaComposite.Clear);
@@ -300,14 +358,27 @@ final class MapPanel extends JPanel {
             g.setComposite(AlphaComposite.SrcOver);
             g.translate(ox, oy);
             g.scale(zoom, zoom);
-            if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 34), 0.8);
-            if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(14, 18, 26, 105), 0.9);
-            strokeArcs(g, worldView, 1, new Color(150, 196, 236, 55), 5.0);
-            strokeArcs(g, worldView, 2, new Color(8, 10, 16, 215), 1.7);
-            strokeArcs(g, worldView, 1, new Color(6, 14, 28, 230), 1.35);
+            drawArcPasses(g, worldView);
             g.dispose();
+            chArc.clear(); borderFull = false;
+        } else if (borderDirty && !chArc.isEmpty()) {
+            Graphics2D g = hq(borderImg);
+            for (int a : chArc) {
+                Rectangle r = screenRect(shapes.arcBounds[a], 6).intersection(screen);
+                if (r.isEmpty()) continue;
+                g.setTransform(new AffineTransform());
+                g.setClip(r);
+                g.setComposite(AlphaComposite.Clear);
+                g.fillRect(r.x, r.y, r.width, r.height);
+                g.setComposite(AlphaComposite.SrcOver);
+                g.translate(ox, oy);
+                g.scale(zoom, zoom);
+                drawArcPasses(g, worldRect(r));
+            }
+            g.dispose();
+            chArc.clear();
         }
-        if (view) { layerOx = ox; layerOy = oy; layerZoom = zoom; }
+        if (view) { layerOx = ox; layerOy = oy; layerZoom = zoom; fillFull = false; borderFull = false; }
         viewDirty = fillDirty = borderDirty = false;
         renderNs += System.nanoTime() - t0; renders++;
     }
@@ -342,8 +413,11 @@ final class MapPanel extends JPanel {
         drawCapitals(g);
         drawPath(g);
         drawArmies(g);
-        drawLegend(g);
+        if (mode == Mode.INTEL) drawLegend(g);
+        drawControls(g);
+        drawTooltip(g);
         drawToasts(g);
+        if (showPerf) { g.setFont(Fonts.ui(12.5f)); g.setColor(new Color(0, 0, 0, 170)); g.fillRoundRect(10, 10, 560, 24, 8, 8); g.setColor(new Color(150, 255, 170)); g.drawString(perf, 18, 27); }
         if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
     }
 
@@ -447,6 +521,7 @@ final class MapPanel extends JPanel {
 
     /** Capitals are drawn as stars above the province centre: gold and larger for yours, a red cross-star if lost. */
     private void drawCapitals(Graphics2D g) {
+        capRects.clear(); capNations.clear();
         if (zoom < 1.25) return;
         Intel in = gs.intelOf(gs.player);
         for (WorldData.NationInfo n : w.nations) {
@@ -468,6 +543,8 @@ final class MapPanel extends JPanel {
             g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
             g.setColor(new Color(10, 14, 24, 235));
             g.draw(star);
+            capRects.add(new Rectangle((int) (s.x - r - 5), (int) (cy - r - 5), (int) (2 * r + 10), (int) (2 * r + 10)));
+            capNations.add(n.index);
             if (mine) { g.setColor(new Color(255, 214, 90, 150)); g.setStroke(new BasicStroke(1.5f)); g.draw(new Ellipse2D.Double(s.x - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8)); }
         }
     }
@@ -532,7 +609,7 @@ final class MapPanel extends JPanel {
         g.setStroke(stale && !own ? new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{3, 3}, 0) : new BasicStroke(own ? 2f : 1.2f));
         g.setColor(selected ? new Color(255, 230, 90) : own ? Color.WHITE : new Color(14, 18, 26, 230));
         g.draw(new RoundRectangle2D.Double(x, y, fw, fh, 6, 6));
-        Font f = Fonts.label((float) (12.5 * sz)).deriveFont(Font.BOLD);
+        Font f = Fonts.labelBold((float) (12.5 * sz));
         g.setFont(f);
         FontMetrics fm = g.getFontMetrics();
         int pw = Math.max(fw - 8, fm.stringWidth(text) + 12), px = x + (fw - pw) / 2, py = y + fh - 2;
@@ -548,16 +625,16 @@ final class MapPanel extends JPanel {
     }
 
     private void drawLegend(Graphics2D g) {
-        String t = mode.label.toUpperCase() + " MAP" + (mode == Mode.INTEL ? "   |   green exact  -  lime estimate  -  amber contact  -  dark unseen (memory fades)" : "");
+        String t = "green exact  -  lime estimate  -  amber contact  -  dark unseen (memory fades)";
         g.setFont(Fonts.label(13f));
         FontMetrics fm = g.getFontMetrics();
         int wd = fm.stringWidth(t) + 24;
         g.setColor(new Color(8, 14, 26, 190));
-        g.fillRoundRect(10, getHeight() - 34, wd, 24, 10, 10);
+        g.fillRoundRect((getWidth() - wd) / 2, getHeight() - 96, wd, 24, 10, 10);
         g.setColor(new Color(255, 255, 255, 40));
-        g.drawRoundRect(10, getHeight() - 34, wd, 24, 10, 10);
+        g.drawRoundRect((getWidth() - wd) / 2, getHeight() - 96, wd, 24, 10, 10);
         g.setColor(new Color(225, 232, 244));
-        g.drawString(t, 22, getHeight() - 17);
+        g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 79);
     }
 
     // ------------------------------------------------------------------ input
@@ -569,19 +646,26 @@ final class MapPanel extends JPanel {
 
     private void click(MouseEvent e) {
         if (tutorial != null && tutorial.click(e.getPoint())) { repaint(); return; }
-        for (int i = hits.size() - 1; i >= 0; i--) {
-            Hit h = hits.get(i);
-            if (h.r.contains(e.getPoint()) && SwingUtilities.isLeftMouseButton(e)) {
-                selArmy = h.armyId; selProv = gs.armies.containsKey(h.armyId) ? gs.armies.get(h.armyId).province : selProv;
-                Intel.Sighting sg = gs.intelOf(gs.player).sightingOf(h.armyId);
-                if (sg != null) selProv = sg.province;
-                Audio.get().play(Synth.Sfx.CLICK);
-                onSelect.run(); repaint(); return;
+        boolean left = SwingUtilities.isLeftMouseButton(e), right = SwingUtilities.isRightMouseButton(e);
+        if (left) {
+            int ov = overlayAt(e.getPoint());
+            if (ov >= 0) { overlayAction(ov); return; }
+            int cap = capitalAt(e.getPoint());
+            if (cap >= 0) { Audio.get().play(Synth.Sfx.CLICK); onCapital.accept(cap); return; }
+            for (int i = hits.size() - 1; i >= 0; i--) {
+                Hit h = hits.get(i);
+                if (h.r.contains(e.getPoint())) {
+                    selArmy = h.armyId; selProv = gs.armies.containsKey(h.armyId) ? gs.armies.get(h.armyId).province : selProv;
+                    Intel.Sighting sg = gs.intelOf(gs.player).sightingOf(h.armyId);
+                    if (sg != null) selProv = sg.province;
+                    Audio.get().play(Synth.Sfx.CLICK);
+                    onSelect.run(); repaint(); return;
+                }
             }
         }
         int id = provinceAt(e.getX(), e.getY());
         if (id < 0) return;
-        if (raidArmy >= 0 && SwingUtilities.isLeftMouseButton(e)) {
+        if (left && raidArmy >= 0) {
             Army raider = gs.armies.get(raidArmy);
             raidArmy = -1;
             if (raider != null) {
@@ -594,16 +678,120 @@ final class MapPanel extends JPanel {
             return;
         }
         Army sel = gs.armies.get(selArmy);
-        if (SwingUtilities.isLeftMouseButton(e) && sel != null && sel.owner == gs.player) {
-            // click army, then click destination
-            GameState.Result r = gs.orderMove(sel, id);
-            Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
-            if (!r.ok) JOptionPane.showMessageDialog(this, r.message, "Order", JOptionPane.WARNING_MESSAGE);
-            onOrder.run(); repaint();
+        if (right) {
+            // right-click orders the selected army to march
+            if (sel != null && sel.owner == gs.player) {
+                GameState.Result r = gs.orderMove(sel, id);
+                Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
+                if (!r.ok) toast("Cannot march", r.message, "battle");
+                onOrder.run(); repaint();
+            }
             return;
         }
-        selProv = id; selArmy = -1;
+        selProv = id; selArmy = -1;                      // left-click on ground: inspect the province, drop the army selection
         Audio.get().play(Synth.Sfx.CLICK);
         onSelect.run(); repaint();
+    }
+
+    // ------------------------------------------------------------------ floating controls
+    private int overlayAt(Point p) {
+        for (int i = 0; i < modeRects.size(); i++) if (modeRects.get(i).contains(p)) return i;
+        if (zoomInRect.contains(p)) return 10;
+        if (zoomOutRect.contains(p)) return 11;
+        if (homeRect.contains(p)) return 12;
+        return -1;
+    }
+
+    private void overlayAction(int i) {
+        Audio.get().play(Synth.Sfx.CLICK);
+        if (i < Mode.values().length) setMode(Mode.values()[i]);
+        else if (i == 10) zoomBy(1.4);
+        else if (i == 11) zoomBy(1 / 1.4);
+        else if (i == 12) centerOn(w.nations.get(gs.player).capital, Math.max(zoom, 2.6));
+    }
+
+    private int capitalAt(Point p) {
+        for (int i = 0; i < capRects.size(); i++) if (capRects.get(i).contains(p)) return capNations.get(i);
+        return -1;
+    }
+
+    private void drawControls(Graphics2D g) {
+        modeRects.clear();
+        Mode[] modes = Mode.values();
+        int bw = 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 16;
+        int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
+        g.setColor(new Color(0, 0, 0, 90));
+        g.fillRoundRect(x0 + 2, y0 + 3, total, bh + 12, 22, 22);
+        g.setColor(new Color(10, 16, 28, 228));
+        g.fillRoundRect(x0, y0 - 2, total, bh + 12, 22, 22);
+        g.setColor(new Color(255, 255, 255, 36));
+        g.setStroke(new BasicStroke(1f));
+        g.drawRoundRect(x0, y0 - 2, total, bh + 12, 22, 22);
+        g.setFont(Fonts.label(14.5f));
+        for (int i = 0; i < modes.length; i++) {
+            Rectangle r = new Rectangle(x0 + 8 + i * (bw + gap), y0 + 3, bw, bh);
+            modeRects.add(r);
+            boolean on = modes[i] == mode, hov = hoverOverlay == i;
+            g.setColor(on ? Ui.ACCENT : hov ? new Color(255, 255, 255, 30) : new Color(255, 255, 255, 12));
+            g.fillRoundRect(r.x, r.y, r.width, r.height, 16, 16);
+            g.setColor(on ? Ui.BG : Ui.TEXT);
+            String label = modes[i].label.replace(" / Vision", "").toUpperCase();
+            g.drawString(label, r.x + (r.width - g.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
+        }
+        // zoom and home buttons, bottom right
+        int bx = getWidth() - 52, by = getHeight() - 168;
+        zoomInRect = new Rectangle(bx, by, 38, 38);
+        zoomOutRect = new Rectangle(bx, by + 44, 38, 38);
+        homeRect = new Rectangle(bx, by + 88, 38, 38);
+        String[] glyph = {"+", "-", null};
+        Rectangle[] rs = {zoomInRect, zoomOutRect, homeRect};
+        for (int i = 0; i < 3; i++) {
+            Rectangle r = rs[i];
+            g.setColor(new Color(10, 16, 28, 228));
+            g.fillRoundRect(r.x, r.y, r.width, r.height, 14, 14);
+            g.setColor(hoverOverlay == 10 + i ? new Color(255, 255, 255, 50) : new Color(255, 255, 255, 24));
+            g.drawRoundRect(r.x, r.y, r.width, r.height, 14, 14);
+            if (glyph[i] != null) {
+                g.setFont(Fonts.ui(24f));
+                g.setColor(Ui.TEXT);
+                g.drawString(glyph[i], r.x + (r.width - g.getFontMetrics().stringWidth(glyph[i])) / 2, r.y + 27);
+            } else g.drawImage(Assets.icon("castle", 24, Ui.GOLD), r.x + 7, r.y + 7, null);
+        }
+    }
+
+    /** Small info card that follows the cursor: who owns the province under it and how much we actually know. */
+    private void drawTooltip(Graphics2D g) {
+        if (mouse == null || hoverProv < 0 || hoverOverlay >= 0 || dragged) return;
+        WorldData.ProvinceInfo pi = w.provinces.get(hoverProv);
+        Intel in = gs.intelOf(gs.player);
+        int ko = pi.sea ? -1 : in.knownOwner[hoverProv];
+        int age = gs.day - in.lastSeen[hoverProv];
+        String l1 = pi.name;
+        String l2 = pi.sea ? "Sea zone" : (ko >= 0 ? gs.nationName(ko) : "Unknown owner") + "  -  " + pi.terrain.name().charAt(0) + pi.terrain.name().substring(1).toLowerCase();
+        String l3 = in.quality[hoverProv] > 0 ? "Visible now" : age >= 40 ? "Stale atlas data" : "Last seen " + age + " days ago";
+        String l4 = null;
+        for (WorldData.NationInfo n : w.nations) if (n.capital == hoverProv) l4 = "Capital of " + n.name + (n.capitalName.isEmpty() ? "" : " (" + n.capitalName + ")");
+        g.setFont(Fonts.ui(13.5f));
+        FontMetrics fm = g.getFontMetrics();
+        int wd = Math.max(Math.max(fm.stringWidth(l1) + 40, fm.stringWidth(l2)), Math.max(fm.stringWidth(l3), l4 == null ? 0 : fm.stringWidth(l4))) + 28;
+        int h = 22 + 18 * (l4 == null ? 3 : 4) + 8;
+        int x = Math.min(mouse.x + 18, getWidth() - wd - 8), y = Math.min(mouse.y + 20, getHeight() - h - 8);
+        g.setColor(new Color(0, 0, 0, 100));
+        g.fillRoundRect(x + 2, y + 3, wd, h, 14, 14);
+        g.setColor(new Color(10, 16, 28, 238));
+        g.fillRoundRect(x, y, wd, h, 14, 14);
+        g.setColor(new Color(255, 255, 255, 40));
+        g.drawRoundRect(x, y, wd, h, 14, 14);
+        if (ko >= 0) g.drawImage(Assets.flag(w.nations.get(ko), 22), x + 10, y + 9, null);
+        g.setFont(Fonts.labelBold(16f));
+        g.setColor(Color.WHITE);
+        g.drawString(l1, x + (ko >= 0 ? 40 : 12), y + 24);
+        g.setFont(Fonts.ui(13f));
+        g.setColor(new Color(214, 222, 238));
+        int ty = y + 44;
+        g.drawString(l2, x + 12, ty); ty += 18;
+        g.setColor(in.quality[hoverProv] > 0 ? Ui.GREEN : Ui.AMBER);
+        g.drawString(l3, x + 12, ty); ty += 18;
+        if (l4 != null) { g.setColor(Ui.GOLD); g.drawString(l4, x + 12, ty); }
     }
 }

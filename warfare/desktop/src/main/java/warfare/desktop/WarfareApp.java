@@ -27,6 +27,30 @@ public final class WarfareApp {
         Steam.init();
         theme();
         if (args.length >= 2 && args[0].equals("--export-audio")) { exportAudio(args[1]); return; }
+        if (args.length >= 4 && args[0].equals("--countryshot")) {
+            System.setProperty("java.awt.headless", "true");
+            WorldData world = WorldData.load(assets);
+            GameState gs = new GameState(world, world.nationByTag.get(args[2]), 9);
+            for (int i = 0; i < 30; i++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+            if (args.length > 5) gs.ns[gs.player].agents.put(world.nationByTag.get(args[3]), Double.parseDouble(args[5]));
+            int tab = args.length > 4 ? Integer.parseInt(args[4]) : 0;
+            BufferedImage[] img = new BufferedImage[1];
+            SwingUtilities.invokeAndWait(() -> {
+                CountryMenu cm = new CountryMenu(null, gs, world.nationByTag.get(args[3]), () -> {}, () -> {});
+                cm.setTab(tab);
+                cm.root.setSize(560, 720);
+                layoutAll(cm.root);
+                cm.refreshBody();
+                layoutAll(cm.root);
+                img[0] = new BufferedImage(560, 720, BufferedImage.TYPE_INT_RGB);
+                Graphics2D g = img[0].createGraphics();
+                cm.root.paint(g);
+                g.dispose();
+            });
+            ImageIO.write(img[0], "png", new File(args[1]));
+            System.out.println("wrote " + args[1]);
+            return;
+        }
         if (args.length >= 2 && args[0].equals("--basemap")) {
             System.setProperty("java.awt.headless", "true");
             WorldData world = WorldData.load(assets);
@@ -98,6 +122,17 @@ public final class WarfareApp {
         UIManager.put("TabbedPane.selectedBackground", new java.awt.Color(38, 50, 72));
         UIManager.put("Panel.background", new java.awt.Color(20, 26, 38));
         UIManager.put("Component.focusColor", new java.awt.Color(120, 170, 240));
+        UIManager.put("TabbedPane.tabHeight", 40);
+        UIManager.put("TabbedPane.selectedBackground", new java.awt.Color(34, 48, 74));
+        UIManager.put("TabbedPane.underlineColor", new java.awt.Color(92, 162, 255));
+        UIManager.put("TabbedPane.selectedForeground", java.awt.Color.WHITE);
+        UIManager.put("TabbedPane.hoverColor", new java.awt.Color(30, 42, 64));
+        UIManager.put("TabbedPane.tabInsets", new java.awt.Insets(4, 10, 4, 10));
+        UIManager.put("ScrollBar.thumbArc", 999);
+        UIManager.put("ScrollBar.width", 11);
+        UIManager.put("ScrollBar.thumb", new java.awt.Color(70, 86, 118));
+        UIManager.put("ToolTip.background", new java.awt.Color(10, 16, 28));
+        UIManager.put("ToolTip.foreground", new java.awt.Color(228, 234, 246));
     }
 
     static Path findAssets(String[] args) {
@@ -161,6 +196,10 @@ public final class WarfareApp {
             if (args.length > 9 && Integer.parseInt(args[9]) >= 0) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(args[9]); }
             else ui.map.tutorial.active = false;
             if (args.length > 11 && args[11].equals("economy")) { ui.economy.setVisible(true); ui.economy.update(); }
+            if (args.length > 13 && args[13].equals("hover")) {
+                java.awt.geom.Point2D.Double sp = ui.map.screenOf(fp >= 0 ? fp : world.nations.get(me).capital);
+                ui.map.dispatchEvent(new java.awt.event.MouseEvent(ui.map, java.awt.event.MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, (int) sp.x + 34, (int) sp.y + 40, 0, false));
+            }
             if (args.length > 12 && args[12].equals("scroll")) {
                 ui.economy.setVisible(true);
                 layoutAll(ui);

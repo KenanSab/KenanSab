@@ -26,7 +26,9 @@ final class Fonts {
         } catch (Exception e) { return fallback; }
     }
 
-    static Font label(float size) { return label.deriveFont(size); }
+    private static final java.util.Map<Integer, Font> labelCache = new java.util.HashMap<>(), boldCache = new java.util.HashMap<>();
+    static Font label(float size) { return labelCache.computeIfAbsent(Math.round(size * 2), k -> label.deriveFont(k / 2f)); }
+    static Font labelBold(float size) { return boldCache.computeIfAbsent(Math.round(size * 2), k -> label.deriveFont(Font.BOLD, k / 2f)); }
     static Font ui(float size) { return ui.deriveFont(size); }
     static Font title(float size) { return title.deriveFont(size); }
     static String uiFamily() { return ui.getFamily(); }

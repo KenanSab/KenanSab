@@ -25,7 +25,7 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 
 ## Status
 
-**Built and covered by tests** (`core`: 23, `desktop`: 8 incl. a real-window UI test under xvfb):
+**Built and covered by tests** (`core`: 29, `desktop`: 12 incl. a real-window UI test under xvfb):
 
 * Map: 3,476 land provinces from real administrative regions, 271 sea zones, 198 nations, smooth vector borders.
 * Fog of war: vision quality levels, intel decay, hidden ownership/buildings/secret pacts, satellites, radar, recon,
@@ -35,6 +35,12 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 * **Economy panel** (left dock, key E): tax rate with efficiency, six budget sliders (development, infrastructure, education,
   welfare, security, military) with live effect text, policies (mobilization, industry focus, fuel rationing, printing money),
   daily ledger, presets and a build-economy tool. The AI uses the same controls (war stance vs peace stance).
+* **Diplomacy realism:** an opinion matrix (-100..100) built from blocs, rivalries, friendships, borders and government type; alliances
+  are accepted only when the score clears a bar and the refusal explains why. Aid, trade and good behaviour earn friends; war,
+  sanctions, broken pacts and nukes cost them. AI peace offers have cooldowns, so refusals are not met with spam.
+* **Governments and the democracy menu:** seven government types change war weariness, tax anger and coup risk. Four interest groups
+  (military, business, workers, public) react to your budget; democracies and republics hold elections every four years.
+* Province sizes are normalised across nations (tiny regions merged, huge ones split), 3,600+ land provinces.
 * Capitals: real capital cities (Natural Earth) are marked with stars on the map; yours is gold, a lost capital turns red.
 * Diplomacy (war, negotiated peace, alliances, sanctions, aid, oil deals), stability, coups, events, insurgency.
 * AI nations that play under fog, with peacetime build-up capped relative to their starting force.

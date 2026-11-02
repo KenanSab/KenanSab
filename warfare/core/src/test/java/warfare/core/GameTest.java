@@ -581,4 +581,41 @@ class GameTest {
         gs.answerEvent(el, 1);
         assertEquals(Government.AUTOCRACY, gs.ns[gs.player].gov, "contesting the result makes you an autocracy");
     }
+
+    @Test
+    void worldWarCostPerDay() {
+        GameState gs = game("RUS");
+        java.util.Random r = new java.util.Random(3);
+        for (int i = 0; i < 30; i++) {
+            int a = r.nextInt(gs.N), b = r.nextInt(gs.N);
+            if (a != b && !gs.isAlly(a, b)) gs.declareWar(a, b);
+        }
+        int active = 0;
+        for (int d = 0; d < 30; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        for (int n = 0; n < gs.N; n++) if (gs.needsIntel(n)) active++;
+        long t0 = System.nanoTime();
+        for (int d = 0; d < 60; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        double ms = (System.nanoTime() - t0) / 1e6 / 60;
+        long v0 = System.nanoTime();
+        for (int d = 0; d < 20; d++) Vision.updateAll(gs);
+        double vms = (System.nanoTime() - v0) / 1e6 / 20;
+        System.out.printf("world war: %d nations with intel, %.1f ms/day total, vision alone %.1f ms%n", active, ms, vms);
+    }
+
+    @Test
+    void earlyElectionsAndEmergencyPowers() {
+        GameState gs = game("USA");
+        int me = gs.player;
+        assertFalse(gs.callElection(me).ok, "just started: nextElection is far away, so a snap election is refused only if recent");
+        gs.ns[me].nextElection = gs.day + 100;
+        assertTrue(gs.callElection(me).ok);
+        assertEquals(gs.day, gs.ns[me].nextElection);
+        GameState rus = game("RUS");
+        assertFalse(rus.callElection(rus.player).ok, "autocracies do not hold elections");
+        assertFalse(rus.seizePower(rus.player).ok);
+        double st = gs.ns[me].stability;
+        assertTrue(gs.seizePower(me).ok);
+        assertEquals(Government.AUTOCRACY, gs.ns[me].gov);
+        assertEquals(Math.max(0, st - 15), gs.ns[me].stability, 1e-9);
+    }
 }

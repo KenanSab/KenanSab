@@ -251,6 +251,7 @@ final class SidePanels {
     static final class Diplomacy extends JPanel {
         final GameState gs; final MapPanel map; final Runnable refreshAll;
         final List<Integer> rows = new ArrayList<>();
+        java.util.function.IntConsumer onOpen;
         final AbstractTableModel model;
         final JTable table;
 
@@ -259,8 +260,8 @@ final class SidePanels {
             this.gs = gs; this.map = map; this.refreshAll = refreshAll;
             model = new AbstractTableModel() {
                 public int getRowCount() { return rows.size(); }
-                public int getColumnCount() { return 4; }
-                public String getColumnName(int c) { return new String[]{"Nation", "Bloc", "Relation", "Known pacts / strength"}[c]; }
+                public int getColumnCount() { return 5; }
+                public String getColumnName(int c) { return new String[]{"Nation", "Government", "Opinion", "Relation", "Known pacts / strength"}[c]; }
                 public Object getValueAt(int r, int c) { return cell(rows.get(r), c); }
             };
             table = new JTable(model);
@@ -284,14 +285,30 @@ final class SidePanels {
             table.getColumnModel().getColumn(2).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
                 @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
                     JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
+                    int o = ((Number) v).intValue();
+                    l.setText(String.format("%+d", o));
+                    l.setForeground(o < -20 ? Ui.RED : o < 30 ? Ui.AMBER : Ui.GREEN);
+                    return l;
+                }
+            });
+            table.getColumnModel().getColumn(3).setCellRenderer(new javax.swing.table.DefaultTableCellRenderer() {
+                @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+                    JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
                     String s = String.valueOf(v);
                     l.setForeground(s.equals("AT WAR") ? Ui.RED : s.startsWith("Ally") || s.startsWith("Bloc") ? Ui.GREEN : s.equals("Sanctioned") ? Ui.AMBER : Ui.MUTED);
                     return l;
                 }
             });
-            table.getColumnModel().getColumn(0).setPreferredWidth(150);
-            table.getColumnModel().getColumn(2).setPreferredWidth(95);
-            table.getColumnModel().getColumn(3).setPreferredWidth(190);
+            table.getColumnModel().getColumn(0).setPreferredWidth(140);
+            table.getColumnModel().getColumn(1).setPreferredWidth(95);
+            table.getColumnModel().getColumn(2).setPreferredWidth(55);
+            table.getColumnModel().getColumn(3).setPreferredWidth(80);
+            table.getColumnModel().getColumn(4).setPreferredWidth(170);
+            table.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                    if (e.getClickCount() == 2 && table.getSelectedRow() >= 0 && onOpen != null) onOpen.accept(rows.get(table.convertRowIndexToModel(table.getSelectedRow())));
+                }
+            });
             add(new JScrollPane(table), BorderLayout.CENTER);
             JPanel btn = new JPanel(new GridLayout(0, 2, 6, 6));
             btn.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -336,8 +353,9 @@ final class SidePanels {
             int me = gs.player;
             switch (c) {
                 case 0: return gs.nationName(n);
-                case 1: return gs.world.nations.get(n).bloc;
-                case 2: {
+                case 1: return gs.ns[n].gov.label;
+                case 2: return Math.round(gs.opinion[n][me]);
+                case 3: {
                     if (gs.war[me][n]) return "AT WAR";
                     if (gs.allianceKnownTo(me, me, n) && gs.ally[me][n]) return gs.secret[me][n] ? "Ally (secret pact)" : "Ally";
                     if (gs.isAlly(me, n)) return "Bloc ally";

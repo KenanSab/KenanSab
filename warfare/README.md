@@ -17,13 +17,16 @@ Needs Java 21 (JDK) and a display.
 |---|---|
 | Space | pause / play |
 | 1-5 | game speed |
-| Left-click army, then left-click province | march |
-| Right-click | inspect a province |
+| Left-click army flag | select it |
+| Right-click province | march the selected army there |
+| Left-click province | inspect it (hover for a quick card) |
+| Left-click a capital star | that country's screen: overview, government and approval, relations, military |
 | Wheel, +/- | zoom |
 | Drag, arrows, WASD | pan |
 | M | cycle map mode (political, terrain, intel, diplomatic) |
 | E | economy panel (tax, budget sliders, policies, ledger, build) |
 | Esc | deselect army |
+| F3 | performance overlay (days/s, frame times) |
 
 Pick a tactic card per army in the **Selection** tab, or leave it on **General (auto)**, which only uses what your
 intelligence shows. A tutorial walks through the first minutes (Help > Restart tutorial).
@@ -41,7 +44,7 @@ intelligence shows. A tutorial walks through the first minutes (Help > Restart t
 ## Develop
 
 ```bash
-./gradlew :core:test                                  # simulation tests (23)
+./gradlew :core:test                                  # simulation tests (29)
 xvfb-run -a ./gradlew :desktop:test                   # audio + real-window UI tests (needs a display or xvfb)
 ./gradlew :desktop:installDist                        # runnable distribution in desktop/build/install/warfare
 ./gradlew :desktop:packageApp                         # native app image with bundled runtime (run on the target OS)
