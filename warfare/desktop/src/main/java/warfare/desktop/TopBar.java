@@ -25,14 +25,17 @@ final class TopBar extends JPanel {
             stab = new Chip("stability", Ui.GREEN, "Stability. Low stability causes coups, unrest and weak morale"),
             nuke = new Chip("nuke", Ui.RED, "Nuclear warheads");
 
-    TopBar(GameState gs, Runnable togglePause, IntConsumer setSpeed) {
+    TopBar(GameState gs, Runnable togglePause, IntConsumer setSpeed, Runnable toggleEconomy) {
         super(new BorderLayout());
         this.gs = gs;
         setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
         flag.setIcon(new ImageIcon(Assets.flag(gs.world.nations.get(gs.player), 44)));
         JPanel text = Ui.column();
         text.add(nation); text.add(date);
-        JPanel left = Ui.row(flag, Ui.gap(10, 0), text);
+        JButton eco = Ui.button("Economy", "money", toggleEconomy);
+        eco.setFont(Fonts.label(15f));
+        eco.setToolTipText("Open the economy panel (E)");
+        JPanel left = Ui.row(flag, Ui.gap(10, 0), text, Ui.gap(14, 0), eco);
         speed = new SpeedControl(togglePause, setSpeed);
         JPanel centre = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 6));
         centre.setOpaque(false);

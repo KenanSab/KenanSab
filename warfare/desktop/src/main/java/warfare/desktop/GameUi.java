@@ -21,6 +21,8 @@ final class GameUi extends JPanel {
     final JTabbedPane tabs = new JTabbedPane();
     final JLabel newsBar = new JLabel(" ");
     final TopBar topBar;
+    JCheckBoxMenuItem economyMenu;
+    final EconomyPanel economy;
     final Timer timer;
     boolean paused = true;
     int speed = 2;
@@ -45,8 +47,11 @@ final class GameUi extends JPanel {
         tabs.setPreferredSize(new Dimension(410, 100));
         tabs.addChangeListener(e -> updateVisibleTab());
         tabs.setFont(Fonts.label(15f));
-        topBar = new TopBar(gs, () -> setPaused(!paused), this::setSpeed);
+        economy = new EconomyPanel(gs, this::refreshTop, refresh);
+        economy.setVisible(false);
+        topBar = new TopBar(gs, () -> setPaused(!paused), this::setSpeed, this::toggleEconomy);
         add(topBar, BorderLayout.NORTH);
+        add(economy, BorderLayout.WEST);
         add(map, BorderLayout.CENTER);
         add(tabs, BorderLayout.EAST);
         JPanel south = new JPanel(new BorderLayout());
@@ -92,6 +97,8 @@ final class GameUi extends JPanel {
         for (int k : new int[]{KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomout");
         am.put("zoomin", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(1.25); } });
         am.put("zoomout", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(0.8); } });
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_E, 0), "economy");
+        am.put("economy", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { toggleEconomy(); } });
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_M, 0), "mode");
         am.put("mode", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) {
             MapPanel.Mode[] m = MapPanel.Mode.values(); map.setMode(m[(map.mode.ordinal() + 1) % m.length]); } });
@@ -236,7 +243,18 @@ final class GameUi extends JPanel {
         map.repaint();
     }
 
+    void refreshTop() { topBar.update(paused, speed); }
+
+    void toggleEconomy() {
+        economy.setVisible(!economy.isVisible());
+        if (economyMenu != null) economyMenu.setSelected(economy.isVisible());
+        if (economy.isVisible()) economy.update();
+        revalidate(); repaint();
+        map.viewChanged();
+    }
+
     void updateVisibleTab() {
+        if (economy.isVisible()) economy.update();
         Component c = tabs.getSelectedComponent();
         if (c == selection) selection.update();
         else if (c == production) production.update();
@@ -302,9 +320,10 @@ final class GameUi extends JPanel {
         side.addActionListener(e -> { showSide = side.isSelected(); tabs.setVisible(showSide); revalidate(); });
         JCheckBoxMenuItem newsItem = new JCheckBoxMenuItem("Show news bar", true);
         newsItem.addActionListener(e -> { showNews = newsItem.isSelected(); newsBar.setVisible(showNews); revalidate(); });
-        JCheckBoxMenuItem left = new JCheckBoxMenuItem("Dock side panel on the left", false);
-        left.addActionListener(e -> { remove(tabs); add(tabs, left.isSelected() ? BorderLayout.WEST : BorderLayout.EAST); revalidate(); repaint(); });
-        view.add(side); view.add(newsItem); view.add(left);
+        JCheckBoxMenuItem eco = new JCheckBoxMenuItem("Economy panel (E)", false);
+        eco.addActionListener(e -> { if (eco.isSelected() != economy.isVisible()) toggleEconomy(); });
+        economyMenu = eco;
+        view.add(eco); view.add(side); view.add(newsItem);
         mb.add(view);
 
         JMenu help = new JMenu("Help");
@@ -314,7 +333,7 @@ final class GameUi extends JPanel {
         JMenuItem keys = new JMenuItem("Controls");
         keys.addActionListener(e -> JOptionPane.showMessageDialog(this,
                 "Space: pause / play      1-5: game speed      M: cycle map mode      Esc: deselect army\n"
-                        + "Arrow keys / WASD: pan      + / -: zoom\n"
+                        + "Arrow keys / WASD: pan      + / -: zoom      E: economy panel\n"
                         + "Left-click an army marker, then left-click a province to march there.\n"
                         + "Right-click: inspect a province.   Mouse wheel: zoom.   Drag: pan.\n\n"
                         + "Fog of war: you only see what your units, provinces, radar, aircraft, agents,\n"

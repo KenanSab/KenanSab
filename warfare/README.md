@@ -22,6 +22,7 @@ Needs Java 21 (JDK) and a display.
 | Wheel, +/- | zoom |
 | Drag, arrows, WASD | pan |
 | M | cycle map mode (political, terrain, intel, diplomatic) |
+| E | economy panel (tax, budget sliders, policies, ledger, build) |
 | Esc | deselect army |
 
 Pick a tactic card per army in the **Selection** tab, or leave it on **General (auto)**, which only uses what your
@@ -40,7 +41,7 @@ intelligence shows. A tutorial walks through the first minutes (Help > Restart t
 ## Develop
 
 ```bash
-./gradlew :core:test                                  # simulation tests (17)
+./gradlew :core:test                                  # simulation tests (23)
 xvfb-run -a ./gradlew :desktop:test                   # audio + real-window UI tests (needs a display or xvfb)
 ./gradlew :desktop:installDist                        # runnable distribution in desktop/build/install/warfare
 ./gradlew :desktop:packageApp                         # native app image with bundled runtime (run on the target OS)

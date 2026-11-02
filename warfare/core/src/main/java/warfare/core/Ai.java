@@ -108,6 +108,12 @@ public final class Ai {
 
     static void economy(GameState gs, int n, boolean war) {
         NationState s = gs.ns[n];
+        if (gs.day % 30 == n % 30) {
+            Budget b = Budget.forAi(war, s.warWeariness > 50);
+            if (s.ledger != null && s.ledger.net() < 0 && s.money < 120) { b.dev = b.infra = b.edu = 0; b.military = Math.min(b.military, 0.05); }
+            b.printMoney = war && s.money < -100;
+            s.budget = b;
+        }
         WorldData.NationInfo ni = gs.world.nations.get(n);
         if (s.researching == null && s.money > 220 && gs.rng.nextDouble() < 0.1) gs.research(n, Track.values()[gs.rng.nextInt(3)]);
         if (s.money > 150 && gs.rng.nextDouble() < 0.1) {

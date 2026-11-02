@@ -65,6 +65,7 @@ public final class MapGenerator {
         double splitArea = args.length > 3 ? Double.parseDouble(args[3]) : 5200;
         int minLand = args.length > 4 ? Integer.parseInt(args[4]) : 60;
         int seaZones = args.length > 5 ? Integer.parseInt(args[5]) : 260;
+        Path places = args.length > 6 ? Path.of(args[6]) : null;
         Files.createDirectories(out);
         long t0 = System.currentTimeMillis();
 
@@ -190,8 +191,42 @@ public final class MapGenerator {
         Result r = splitAndMerge(prov, nat, minLand, 3000);
         System.out.println("final provinces: land=" + r.landCount + " sea=" + r.seaCount + "  (" + (System.currentTimeMillis() - t0) / 1000 + "s)");
         String[] names = buildNames(nations, regions, prov, origin, keys, R, r);
-        write(out, nations, nat, r, names);
+        Map<String, double[]> capitals = places == null ? Map.of() : readCapitals(places);
+        write(out, nations, nat, r, names, capitals);
         System.out.println("done in " + (System.currentTimeMillis() - t0) / 1000 + "s");
+    }
+
+    /** adm0 code -> {lon, lat} of its national capital; city names kept in a side map. */
+    static final Map<String, String> capitalNames = new HashMap<>();
+
+    static Map<String, double[]> readCapitals(Path file) throws IOException {
+        Map<String, double[]> out = new HashMap<>();
+        try (JsonReader rd = features(file)) {
+            while (rd.hasNext()) {
+                JsonObject f = JsonParser.parseReader(rd).getAsJsonObject();
+                JsonObject p = f.getAsJsonObject("properties");
+                if (!str(p, "featurecla").equals("Admin-0 capital")) continue;
+                String a = str(p, "adm0_a3");
+                out.putIfAbsent(a, new double[]{p.get("longitude").getAsDouble(), p.get("latitude").getAsDouble()});
+                capitalNames.putIfAbsent(a, str(p, "name"));
+            }
+        }
+        return out;
+    }
+
+    /** Province containing the capital (or the nearest province of the same nation), -1 if none. */
+    static int capitalProvince(Nation n, Result r, double lon, double lat) {
+        int cx = (int) pxX(lon), cy = (int) pxY(lat);
+        for (int rad = 0; rad <= 60; rad++) {
+            for (int dy = -rad; dy <= rad; dy++) for (int dx = -rad; dx <= rad; dx++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) != rad) continue;
+                int x = cx + dx, y = cy + dy;
+                if (x < 0 || y < 0 || x >= HW || y >= HH) continue;
+                int pid = r.id[y * HW + x];
+                if (!r.isSea[pid] && r.nation[pid] == n.index + 1) return pid;
+            }
+        }
+        return -1;
     }
 
     // ------------------------------------------------------------------ input
@@ -450,7 +485,7 @@ public final class MapGenerator {
     }
 
     // ------------------------------------------------------------------ output
-    static void write(Path out, List<Nation> nations, byte[] nat, Result r, String[] names) throws Exception {
+    static void write(Path out, List<Nation> nations, byte[] nat, Result r, String[] names, Map<String, double[]> capitals) throws Exception {
         int total = r.landCount + r.seaCount;
         long[] cnt = new long[total];
         double[] sx = new double[total], sy = new double[total];
@@ -476,7 +511,15 @@ public final class MapGenerator {
         for (int i = 0; i < total; i++) { cx[i] = sx[i] / cnt[i] / SCALE; cy[i] = sy[i] / cnt[i] / SCALE; }
         int[] capital = new int[nations.size()];
         Arrays.fill(capital, -1);
+        String[] capName = new String[nations.size()];
         for (Nation n : nations) {
+            double[] c = capitals.get(n.tag);
+            if (c == null) continue;
+            int cp = capitalProvince(n, r, c[0], c[1]);
+            if (cp >= 0) { capital[n.index] = cp; capName[n.index] = capitalNames.get(n.tag); }
+        }
+        for (Nation n : nations) {
+            if (capital[n.index] >= 0) continue;
             double lx = pxX(n.labelLon) / SCALE, ly = pxY(n.labelLat) / SCALE, bd = Double.MAX_VALUE;
             for (int i = 0; i < r.landCount; i++) {
                 if (r.nation[i] != n.index + 1) continue;
@@ -501,11 +544,11 @@ public final class MapGenerator {
         Map<String, String> blocs = blocs();
         int playable = 0;
         try (PrintWriter pw = new PrintWriter(out.resolve("nations.tsv").toFile(), StandardCharsets.UTF_8)) {
-            pw.println("tag\tname\tcontinent\tpopulation\tgdpMillions\tcapital\tbloc\tiso2");
+            pw.println("tag\tname\tcontinent\tpopulation\tgdpMillions\tcapital\tbloc\tiso2\tcapitalName");
             for (Nation n : nations) {
                 if (capital[n.index] < 0) continue;
                 playable++;
-                pw.printf(Locale.ROOT, "%s\t%s\t%s\t%d\t%.0f\t%d\t%s\t%s%n", n.tag, n.name, n.continent, n.pop, n.gdp, capital[n.index], blocs.getOrDefault(n.tag, "NONE"), n.iso2.toLowerCase());
+                pw.printf(Locale.ROOT, "%s\t%s\t%s\t%d\t%.0f\t%d\t%s\t%s\t%s%n", n.tag, n.name, n.continent, n.pop, n.gdp, capital[n.index], blocs.getOrDefault(n.tag, "NONE"), n.iso2.toLowerCase(), capName[n.index] == null ? "" : capName[n.index]);
             }
         }
         System.out.println("playable nations: " + playable);

@@ -77,6 +77,7 @@ final class SelectionPanel extends JPanel {
             return;
         }
         content.add(header(ko, pi.name, (ko >= 0 ? gs.nationName(ko) : "Unknown owner") + "  -  " + pi.terrain.name().charAt(0) + pi.terrain.name().substring(1).toLowerCase()));
+        for (WorldData.NationInfo ni : gs.world.nations) if (ni.capital == p) { content.add(Ui.pill("CAPITAL OF " + ni.name.toUpperCase() + (ni.capitalName.isEmpty() ? "" : "  -  " + ni.capitalName.toUpperCase()), Ui.GOLD)); content.add(Ui.gap(0, 3)); }
         if (q > 0) content.add(Ui.pill("VISIBLE NOW  -  QUALITY " + q + "/3", Ui.GREEN));
         else if (own) content.add(Ui.pill("OWN TERRITORY", Ui.ACCENT));
         else content.add(Ui.pill(age >= 40 ? "STALE ATLAS DATA" : "LAST SEEN " + age + " DAYS AGO  -  " + (int) (100 * Intel.confidence(age)) + "% RELIABLE", Ui.AMBER));

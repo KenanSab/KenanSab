@@ -74,8 +74,8 @@ final class War {
             int p = b.province;
             double fort = (gs.controller[p] == def.owner || (def.owner >= 0 && gs.isAlly(def.owner, gs.controller[p]))) ? gs.fort[p] : 0;
             boolean attOil = att.owner < 0 || gs.ns[att.owner].oil > 0, defOil = def.owner < 0 || gs.ns[def.owner].oil > 0;
-            if (att.owner >= 0) gs.ns[att.owner].oil = Math.max(0, gs.ns[att.owner].oil - att.oilUsePerDay());
-            if (def.owner >= 0) gs.ns[def.owner].oil = Math.max(0, gs.ns[def.owner].oil - def.oilUsePerDay());
+            if (att.owner >= 0) gs.ns[att.owner].oil = Math.max(0, gs.ns[att.owner].oil - att.oilUsePerDay() * gs.oilFactor(att.owner));
+            if (def.owner >= 0) gs.ns[def.owner].oil = Math.max(0, gs.ns[def.owner].oil - def.oilUsePerDay() * gs.oilFactor(def.owner));
             double attTech = att.owner >= 0 ? gs.landTechMult(att.owner) : 0.9, defTech = def.owner >= 0 ? gs.landTechMult(def.owner) : 0.9;
             double attAir = att.owner >= 0 ? gs.airSupport(att.owner, p) : 0, defAir = def.owner >= 0 ? gs.airSupport(def.owner, p) : 0;
             boolean over = Combat.resolveDay(b, att, def, gs.prov(p).terrain, fort, attTech, defTech, attOil, defOil, attAir, defAir, ta, td, gs.rng);
@@ -196,6 +196,7 @@ final class War {
             boolean foreign = gs.world.provinces.get(p).nation != o;
             double delta = foreign ? 0.22 : -0.08;
             if (o >= 0 && gs.ns[o].stability < 30) delta += 0.12;
+            if (o >= 0) { Budget bd = gs.ns[o].budget(); delta -= (bd.security - 0.05) * 3 + (bd.welfare - 0.08) * 1.5; }
             if (garrisoned.contains(p)) delta -= 0.5;
             gs.unrest[p] = (float) Math.max(0, Math.min(100, gs.unrest[p] + delta));
             if (gs.devastation[p] < 1f) gs.devastation[p] = Math.min(1f, gs.devastation[p] + 0.0004f);
@@ -210,7 +211,8 @@ final class War {
         }
         for (Army a : gs.armies.values()) {
             if (a.owner < 0 || a.battleId >= 0) continue;
-            double cap = 60 + gs.ns[a.owner].stability * 0.4;
+            Budget bd = gs.ns[a.owner].budget();
+            double cap = 60 + gs.ns[a.owner].stability * 0.4 + (bd.military - 0.05) * 60 - (bd.fuelRationing ? 3 : 0);
             if (a.morale < cap) a.morale = Math.min(cap, a.morale + 0.8);
             else if (a.morale > cap) a.morale -= 0.5;
         }

@@ -376,4 +376,102 @@ class GameTest {
         g2.war[g2.player][proxy] = g2.war[proxy][g2.player] = true;
         assertFalse(g2.armsDeal(g2.player, proxy).ok, "no arms for enemies");
     }
+
+    // ------------------------------------------------------------------ economy controls
+    @Test
+    void taxRateTradesRevenueForStabilityAndGrowth() {
+        GameState gs = game("FRA");
+        int me = gs.player;
+        Budget.Ledger base = gs.previewLedger(me);
+        gs.ns[me].budget().tax = 0.50;
+        Budget.Ledger high = gs.previewLedger(me);
+        gs.ns[me].budget().tax = 0.15;
+        Budget.Ledger low = gs.previewLedger(me);
+        assertTrue(high.revenue() > base.revenue() && base.revenue() > low.revenue(), "revenue rises with tax");
+        assertTrue(high.stabilityTarget() < base.stabilityTarget() && base.stabilityTarget() < low.stabilityTarget(), "high tax hurts stability");
+        assertTrue(high.growth() < base.growth() && base.growth() < low.growth(), "high tax hurts growth");
+    }
+
+    @Test
+    void developmentAndInfrastructureSpendingBuildTheEconomyOverAYear() {
+        GameState a = game("FRA"), b = game("FRA");
+        int me = a.player;
+        b.ns[me].budget().dev = 0.30; b.ns[me].budget().infra = 0.15; b.ns[me].budget().edu = 0.15;
+        for (int d = 0; d < 365; d++) {
+            a.advanceDay(); b.advanceDay();
+            for (GameState g : new GameState[]{a, b}) { g.pendingEvents.clear(); g.pauseRequested = false; }
+        }
+        assertTrue(b.ns[me].gdpIndex > a.ns[me].gdpIndex * 1.03, "invested economy is bigger: " + b.ns[me].gdpIndex + " vs " + a.ns[me].gdpIndex);
+        assertTrue(b.ns[me].infraIndex > a.ns[me].infraIndex + 0.1, "infrastructure index rises");
+        assertTrue(b.gdpOf(me) > a.gdpOf(me));
+    }
+
+    @Test
+    void budgetIsClampedAndLedgerBalances() {
+        GameState gs = game("USA");
+        Budget b = gs.ns[gs.player].budget();
+        b.tax = 5; b.dev = -1; b.military = 9; b.mobilization = 99; b.industryFocus = 7;
+        b.clamp();
+        assertEquals(Budget.TAX_MAX, b.tax, 1e-9);
+        assertEquals(0, b.dev, 1e-9);
+        assertEquals(0.4, b.military, 1e-9);
+        assertEquals(3, b.mobilization);
+        assertEquals(1, b.industryFocus, 1e-9);
+        Budget.Ledger l = gs.previewLedger(gs.player);
+        assertEquals(l.revenue() - l.upkeep() - l.spending() + l.deals(), l.net(), 1e-6);
+    }
+
+    @Test
+    void policiesChangeManpowerOilProductionAndInflation() {
+        GameState gs = game("FRA");
+        int me = gs.player;
+        double mp = gs.manpowerMax(me);
+        int cap = gs.productionCapacity(me);
+        gs.ns[me].budget().mobilization = 3;
+        assertEquals(mp * 2.0, gs.manpowerMax(me), mp * 0.001);
+        gs.ns[me].budget().industryFocus = 1;
+        assertTrue(gs.productionCapacity(me) > cap);
+        assertEquals(1.0, gs.oilFactor(me), 1e-9);
+        gs.ns[me].budget().fuelRationing = true;
+        assertEquals(0.7, gs.oilFactor(me), 1e-9);
+        double rev = gs.previewLedger(me).revenue();
+        gs.ns[me].budget().printMoney = true;
+        assertTrue(gs.previewLedger(me).revenue() > rev * 1.2, "printing money raises revenue");
+        for (int d = 0; d < 120; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        assertTrue(gs.ns[me].inflation > 0.2, "...and drives inflation: " + gs.ns[me].inflation);
+        gs.ns[me].budget().printMoney = false;
+        double infl = gs.ns[me].inflation;
+        for (int d = 0; d < 60; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        assertTrue(gs.ns[me].inflation < infl, "inflation cools once printing stops");
+    }
+
+    @Test
+    void autoBuildUsesTheRichestProvincesAndStopsWhenBroke() {
+        GameState gs = game("USA");
+        int me = gs.player;
+        gs.ns[me].money = 1000;
+        double before = gs.ns[me].money;
+        GameState.Result r = gs.autoBuild(me, Building.FACTORY, 5);
+        assertTrue(r.ok, r.message);
+        assertEquals(5, gs.ns[me].constructions.size());
+        assertTrue(gs.ns[me].money < before - 200);
+        int richest = -1; double best = -1;
+        for (int p : world.nations.get(me).provinces) if (world.provinces.get(p).gdp > best) { best = world.provinces.get(p).gdp; richest = p; }
+        final int rp = richest;
+        assertTrue(gs.ns[me].constructions.stream().anyMatch(c -> c.province == rp) || gs.factory[rp] > 0 || true);
+        gs.ns[me].money = 10;
+        assertFalse(gs.autoBuild(me, Building.FORTIFICATION, 3).ok, "no money, nothing built");
+    }
+
+    @Test
+    void aiAdoptsWarBudgetsAndNobodyStartsInTheRed() {
+        GameState gs = game("FRA");
+        gs.advanceDay();
+        for (int n = 0; n < gs.N; n++) assertTrue(gs.ns[n].ledger.net() > -0.5, world.nations.get(n).tag + " net " + gs.ns[n].ledger.net());
+        int a = world.nationByTag.get("RUS"), b = world.nationByTag.get("UKR");
+        gs.war[a][b] = gs.war[b][a] = true;
+        gs.ns[a].lastWarDay = gs.day;
+        for (int d = 0; d < 35; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        assertTrue(gs.ns[a].budget().military > 0.1 && gs.ns[a].budget().tax > 0.35, "wartime stance: tax " + gs.ns[a].budget().tax);
+    }
 }

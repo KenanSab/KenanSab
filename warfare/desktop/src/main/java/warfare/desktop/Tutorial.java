@@ -18,12 +18,13 @@ final class Tutorial {
             new Step("Fog of war", "You only see what your units, provinces, radar, aircraft, agents and allies reveal. Press M until the Intel map shows: green is exact, lime an estimate, amber a contact, dark unseen. Old sightings fade.", "recon", true),
             new Step("Tactic cards", "In a battle, each army uses a tactic card. Every card counters two others, and unit mix, terrain and surprise matter. Pick cards yourself, or leave the army on General (auto), which only uses what you can see.", "t_ambush", false),
             new Step("Build and recruit", "The Production tab recruits forces, researches upgrades and forms air wings. Provinces you own can build factories, forts, radar and more.", "industry", false),
+            new Step("The economy panel", "Press E or the Economy button for the budget: tax rate, development, infrastructure, education, welfare, security and military funding, plus mobilization, fuel rationing and money printing. Stars on the map mark capitals.", "money", false),
             new Step("Diplomacy and spies", "The Diplomacy tab handles war, negotiated peace, alliances, sanctions and agents. Agents inside a country reveal secret pacts and its forces.", "spy", false),
             new Step("You are ready", "This is a sandbox with no fixed end. Watch stability, oil and morale, and keep your intelligence fresh. Good luck.", "trophy", false));
 
     int step;
     boolean active;
-    private Rectangle next = new Rectangle(), skip = new Rectangle();
+    private Rectangle next = new Rectangle(), skip = new Rectangle(), card = new Rectangle();
     private boolean wasPaused = true;
     private int startDay;
 
@@ -56,7 +57,7 @@ final class Tutorial {
         if (!active) return false;
         if (next.contains(p)) { advance(); return true; }
         if (skip.contains(p)) { active = false; return true; }
-        return false;
+        return card.contains(p);          // clicks on the card itself never fall through to the map
     }
 
     void paint(Graphics2D g, int width, int height) {
@@ -68,6 +69,7 @@ final class Tutorial {
         java.util.List<String> lines = wrap(s.text(), fm, w - 32);
         int h = 74 + lines.size() * (fm.getHeight() + 1) + 40;
         int y = height - h - 52;
+        card = new Rectangle(x, y, w, h);
         g.setColor(new Color(0, 0, 0, 90));
         g.fill(new RoundRectangle2D.Float(x + 3, y + 5, w, h, 18, 18));
         g.setColor(new Color(12, 20, 36, 240));

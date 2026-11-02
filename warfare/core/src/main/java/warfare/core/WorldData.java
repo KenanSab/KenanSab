@@ -30,7 +30,7 @@ public final class WorldData {
 
     public static final class NationInfo {
         public int index;
-        public String tag, name, continent, bloc, iso2 = "";
+        public String tag, name, continent, bloc, iso2 = "", capitalName = "";
         public long population;
         public double gdp;
         public int capital;
@@ -66,6 +66,7 @@ public final class WorldData {
             n.population = Long.parseLong(f[3]); n.gdp = Math.max(500, Double.parseDouble(f[4]));
             n.capital = Integer.parseInt(f[5]); n.bloc = f[6];
             if (f.length > 7) n.iso2 = f[7];
+            if (f.length > 8) n.capitalName = f[8];
             n.aggression = (Math.abs((n.tag + "agg").hashCode() % 1000)) / 1000.0;
             w.nations.add(n);
             w.nationByTag.put(n.tag, n.index);

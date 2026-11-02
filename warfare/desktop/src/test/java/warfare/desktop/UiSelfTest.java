@@ -9,6 +9,7 @@ import java.awt.event.MouseEvent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import warfare.core.Budget;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -31,6 +32,7 @@ class UiSelfTest {
         WarfareApp.theme();
         world = WorldData.load(WarfareApp.assets);
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> errors.add(e));
+        Settings.tutorial = false;
     }
 
     /** Closes any modal dialog that pops up: answers JOptionPanes with their first/default option. */
@@ -85,6 +87,7 @@ class UiSelfTest {
         AtomicBoolean stop = new AtomicBoolean();
         List<String> dialogs = new CopyOnWriteArrayList<>();
         dialogCloser(stop, dialogs);
+        stop.set(false);
         MapPanel map = ui[0].map;
 
         // every tab renders with a province selected, then an army, then nothing
@@ -105,13 +108,20 @@ class UiSelfTest {
         });
         assertEquals(mine.id, map.selArmy, "clicking the flag selects the army");
         int dest = -1;
-        for (int nb : gs.prov(mine.province).neighbours) if (!gs.isSea(nb) && gs.owner[nb] == gs.player) { dest = nb; break; }
-        assertTrue(dest >= 0);
+        double bestDist = Double.MAX_VALUE;
+        for (int nb : gs.prov(mine.province).neighbours) {
+            if (gs.isSea(nb) || gs.owner[nb] != gs.player || !gs.armiesIn(nb).isEmpty()) continue;   // empty ground, so no army flag intercepts the click
+            java.awt.geom.Point2D.Double sp = map.screenOf(nb);
+            boolean onScreen = sp.x > 40 && sp.y > 40 && sp.x < map.getWidth() - 40 && sp.y < map.getHeight() - 40;
+            double d = gs.dist(mine.province, nb);
+            if (onScreen && d < bestDist) { bestDist = d; dest = nb; }
+        }
+        assertTrue(dest >= 0, "an own neighbouring province is visible on screen");
         final int target = dest;
-        SwingUtilities.invokeAndWait(() -> { Point2D t = Point2D.of(map.screenOf(target)); click(map, new Point((int) t.getX(), (int) t.getY()), MouseEvent.BUTTON1); });
+        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, new Point((int) map.screenOf(mine.province).x, (int) map.screenOf(mine.province).y)), MouseEvent.BUTTON1));
         assertFalse(mine.path.isEmpty(), "second click issues the march order");
         // right click deselects and inspects
-        SwingUtilities.invokeAndWait(() -> { Point2D t = Point2D.of(map.screenOf(target)); click(map, new Point((int) t.getX(), (int) t.getY()), MouseEvent.BUTTON3); });
+        SwingUtilities.invokeAndWait(() -> click(map, insidePoint(map, target, null), MouseEvent.BUTTON3));
         assertEquals(-1, map.selArmy);
 
         // war with a manual army that has no tactic: the game must pause and ask
@@ -158,6 +168,87 @@ class UiSelfTest {
         // a stretch of real-time play, all tabs, no exceptions
         for (int i = 0; i < 60; i++) SwingUtilities.invokeAndWait(() -> { GameUi u = (GameUi) frame[0].getContentPane(); u.tick(); });
         stop.set(true);
+        SwingUtilities.invokeAndWait(() -> frame[0].dispose());
+        assertTrue(errors.isEmpty(), "uncaught UI exceptions: " + errors);
+    }
+
+    /** A screen point inside the province, on screen and at least 70 px from the given point (e.g. an army flag). */
+    static Point insidePoint(MapPanel map, int province, Point avoid) {
+        WorldData.ProvinceInfo p = world.provinces.get(province);
+        double bestD = Double.MAX_VALUE; Point best = null;
+        for (int y = Math.max(0, (int) p.cy - 200); y < Math.min(world.height, (int) p.cy + 200); y++)
+            for (int x = Math.max(0, (int) p.cx - 200); x < Math.min(world.width, (int) p.cx + 200); x++) {
+                if (world.idMap[y * world.width + x] != province) continue;
+                java.awt.geom.Point2D.Double sp = map.screenOfMapPoint(x + 0.5, y + 0.5);
+                if (sp.x < 30 || sp.y < 30 || sp.x > map.getWidth() - 30 || sp.y > map.getHeight() - 30) continue;
+                if (avoid != null && Math.hypot(sp.x - avoid.x, sp.y - avoid.y) < 70) continue;
+                double d = (x - p.cx) * (x - p.cx) + (y - p.cy) * (y - p.cy);
+                if (d < bestD) { bestD = d; best = new Point((int) Math.round(sp.x), (int) Math.round(sp.y)); }
+            }
+        assertNotNull(best, "found a clickable pixel in province " + province);
+        return best;
+    }
+
+    static <T extends Component> List<T> all(Container c, Class<T> type) {
+        List<T> out = new java.util.ArrayList<>();
+        for (Component ch : c.getComponents()) {
+            if (type.isInstance(ch)) out.add(type.cast(ch));
+            if (ch instanceof Container k) out.addAll(all(k, type));
+        }
+        return out;
+    }
+
+    @Test
+    void economyPanelControlsDriveTheSimulation() throws Exception {
+        GameState gs = new GameState(world, world.nationByTag.get("FRA"), 5);
+        AtomicBoolean stopCloser = new AtomicBoolean();
+        dialogCloser(stopCloser, new CopyOnWriteArrayList<>());
+        JFrame[] frame = new JFrame[1];
+        GameUi[] ui = new GameUi[1];
+        SwingUtilities.invokeAndWait(() -> {
+            frame[0] = new JFrame("econ");
+            frame[0].setSize(1500, 900);
+            ui[0] = new GameUi(gs, frame[0]);
+            WarfareApp.install(frame[0], ui[0]);
+            frame[0].setVisible(true);
+            assertFalse(ui[0].economy.isVisible());
+            ui[0].toggleEconomy();
+            assertTrue(ui[0].economy.isVisible(), "E toggles the dock open");
+        });
+        Budget b = gs.ns[gs.player].budget();
+        SwingUtilities.invokeAndWait(() -> {
+            List<JSlider> sliders = all(ui[0].economy, JSlider.class);
+            assertTrue(sliders.size() >= 7, "tax + 6 budget sliders + focus: " + sliders.size());
+            sliders.get(0).setValue(52);                       // tax rate
+            sliders.get(1).setValue(25);                       // development
+        });
+        assertEquals(0.52, b.tax, 1e-9);
+        assertEquals(0.25, b.dev, 1e-9);
+        SwingUtilities.invokeAndWait(() -> {
+            JComboBox<?> mob = all(ui[0].economy, JComboBox.class).get(0);
+            mob.setSelectedIndex(3);
+            for (JCheckBox c : all(ui[0].economy, JCheckBox.class)) if (c.getText().startsWith("Print")) c.doClick();
+        });
+        assertEquals(3, b.mobilization);
+        assertTrue(b.printMoney);
+        SwingUtilities.invokeAndWait(() -> {
+            for (JButton bt : all(ui[0].economy, JButton.class)) if (bt.getText().equals("War economy")) bt.doClick();
+        });
+        assertEquals(2, b.mobilization, "war economy preset");
+        assertTrue(b.military >= 0.15 && b.tax >= 0.4);
+        SwingUtilities.invokeAndWait(() -> {
+            for (JButton bt : all(ui[0].economy, JButton.class)) if (bt.getText().equals("Balanced")) bt.doClick();
+        });
+        assertEquals(0.30, b.tax, 1e-9);
+        gs.ns[gs.player].money = 2000;
+        SwingUtilities.invokeAndWait(() -> {
+            for (JButton bt : all(ui[0].economy, JButton.class)) if (bt.getText().equals("Build")) bt.doClick();
+        });
+        Thread.sleep(300);
+        assertFalse(gs.ns[gs.player].constructions.isEmpty(), "Build economy queued construction");
+        for (int i = 0; i < 40; i++) SwingUtilities.invokeAndWait(() -> ui[0].tick());
+        SwingUtilities.invokeAndWait(() -> ui[0].toggleEconomy());
+        stopCloser.set(true);
         SwingUtilities.invokeAndWait(() -> frame[0].dispose());
         assertTrue(errors.isEmpty(), "uncaught UI exceptions: " + errors);
     }

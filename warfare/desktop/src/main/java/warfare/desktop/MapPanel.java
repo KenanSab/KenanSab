@@ -135,6 +135,8 @@ final class MapPanel extends JPanel {
         zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; viewDirty = true; repaint();
     }
 
+    void viewChanged() { viewDirty = true; repaint(); }
+
     void pan(double dx, double dy) { ox += dx; oy += dy; viewDirty = true; repaint(); }
 
     void zoomBy(double f) {
@@ -337,12 +339,16 @@ final class MapPanel extends JPanel {
         hits.clear();
         drawHighlights(g);
         drawLabels(g);
+        drawCapitals(g);
         drawPath(g);
         drawArmies(g);
         drawLegend(g);
         drawToasts(g);
         if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
     }
+
+    /** Screen position of a point given in map units (used by tests to click exact pixels). */
+    Point2D.Double screenOfMapPoint(double mx, double my) { return new Point2D.Double(mx * zoom + ox, my * zoom + oy); }
 
     /** Screen position of a province centre (also used by tests to aim synthetic clicks). */
     Point2D.Double screenOf(int p) { return screen(p); }
@@ -426,6 +432,44 @@ final class MapPanel extends JPanel {
         g.setColor(fill);
         g.fill(s);
         g.setTransform(old);
+    }
+
+    private static Path2D.Double star(double cx, double cy, double r) {
+        Path2D.Double s = new Path2D.Double();
+        for (int i = 0; i < 10; i++) {
+            double ang = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 == 0 ? r : r * 0.45;
+            double x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+            if (i == 0) s.moveTo(x, y); else s.lineTo(x, y);
+        }
+        s.closePath();
+        return s;
+    }
+
+    /** Capitals are drawn as stars above the province centre: gold and larger for yours, a red cross-star if lost. */
+    private void drawCapitals(Graphics2D g) {
+        if (zoom < 1.25) return;
+        Intel in = gs.intelOf(gs.player);
+        for (WorldData.NationInfo n : w.nations) {
+            int p = n.capital;
+            if (p < 0) continue;
+            Point2D.Double s = screen(p);
+            if (s.x < -30 || s.y < -30 || s.x > getWidth() + 30 || s.y > getHeight() + 30) continue;
+            boolean mine = n.index == gs.player, selected = p == selProv;
+            if (!mine && !selected && zoom < 1.8) continue;
+            int knownOwner = in.knownOwner[p];
+            boolean lost = knownOwner >= 0 && knownOwner != n.index;
+            double r = mine ? 11 : 8;
+            double cy = s.y - (zoom > 2.5 ? 30 : 20);
+            Path2D.Double star = star(s.x, cy, r);
+            g.setColor(new Color(0, 0, 0, 120));
+            g.fill(star(s.x + 1.5, cy + 2, r));
+            g.setColor(lost ? new Color(200, 60, 52) : mine ? new Color(255, 214, 90) : new Color(245, 245, 250));
+            g.fill(star);
+            g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(10, 14, 24, 235));
+            g.draw(star);
+            if (mine) { g.setColor(new Color(255, 214, 90, 150)); g.setStroke(new BasicStroke(1.5f)); g.draw(new Ellipse2D.Double(s.x - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8)); }
+        }
     }
 
     private void drawPath(Graphics2D g) {

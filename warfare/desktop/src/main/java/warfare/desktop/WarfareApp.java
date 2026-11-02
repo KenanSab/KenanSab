@@ -160,6 +160,12 @@ public final class WarfareApp {
             if (args.length > 6) ui.tabs.setSelectedIndex(Integer.parseInt(args[6]));
             if (args.length > 9 && Integer.parseInt(args[9]) >= 0) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(args[9]); }
             else ui.map.tutorial.active = false;
+            if (args.length > 11 && args[11].equals("economy")) { ui.economy.setVisible(true); ui.economy.update(); }
+            if (args.length > 12 && args[12].equals("scroll")) {
+                ui.economy.setVisible(true);
+                layoutAll(ui);
+                for (java.awt.Component c : ui.economy.getComponents()) if (c instanceof JScrollPane sp) { layoutAll(sp); sp.getVerticalScrollBar().setValue(sp.getVerticalScrollBar().getMaximum()); }
+            }
             if (args.length > 8 && args[8].equals("toast")) ui.map.toast("Out of Nowhere", "Win a battle with Ambush while unseen.", "t_ambush");
             if (args.length > 7 && args[7].equals("army"))
                 for (Army a : gs.armies.values()) if (a.owner == me) { ui.map.selArmy = a.id; ui.map.selProv = a.province; break; }

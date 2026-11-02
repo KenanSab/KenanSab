@@ -69,6 +69,7 @@ public final class GameState implements Serializable {
             ns[n].nukes = ni.nukes;
             ns[n].subs = ni.nukes >= 8 ? 2 : ni.nukes >= 5 ? 1 : 0;      // ballistic-missile submarines can launch without a silo
             ns[n].transports = (int) Math.max(0, Math.min(12, Math.sqrt(ni.gdp) / 120));
+            ns[n].infraIndex = Math.max(0.1, Math.min(0.6, 0.15 + 0.45 * Math.min(1.0, rich / 30000.0)));
             ns[n].stability = 55 + (rich > 15000 ? 12 : 0) + (Math.abs(ni.tag.hashCode()) % 20);
             if (rich > 20000) ns[n].tech[0] = 1;
             if (ni.nukes > 0) { ns[n].tech[2] = 2; ns[n].tech[1] = 1; }
@@ -181,7 +182,7 @@ public final class GameState implements Serializable {
 
     public int ownedProvinces(int n) { int c = 0; for (int p = 0; p < P; p++) if (owner[p] == n) c++; return c; }
 
-    public double manpowerMax(int n) { return world.nations.get(n).population * 0.03 / 1000.0; }
+    public double manpowerMax(int n) { return world.nations.get(n).population * 0.03 / 1000.0 * Budget.MOB_MANPOWER[ns[n].budget().mobilization]; }
 
     public double nationHp(int n) {
         double s = 0;
@@ -198,7 +199,7 @@ public final class GameState implements Serializable {
     public double gdpOf(int n) {
         double s = 0;
         for (int p = 0; p < P; p++) if (owner[p] == n) s += world.provinces.get(p).gdp * devastation[p] * (1 + 0.15 * factory[p]);
-        return s;
+        return s * ns[n].gdpIndex * (1 + 0.10 * ns[n].infraIndex);
     }
 
     public double unitsOf(int n) {
@@ -211,7 +212,7 @@ public final class GameState implements Serializable {
     public int productionCapacity(int n) {
         double f = 0;
         for (int p = 0; p < P; p++) if (owner[p] == n) f += factory[p];
-        return (int) Math.max(1, Math.round(Math.sqrt(gdpOf(n)) / 60.0 + f * 0.5));
+        return (int) Math.max(1, Math.round((Math.sqrt(gdpOf(n)) / 60.0 + f * 0.5) * (1 + 0.3 * ns[n].budget().industryFocus)));
     }
 
     public boolean needsIntel(int n) {
@@ -645,23 +646,31 @@ public final class GameState implements Serializable {
                 if (war[m][n] && ns[m].transports > ns[n].transports + 2) blockaded = true;
             }
             s.blockaded = blockaded;
-            double income = gdp[n] / 365.0 * 0.002 + 0.2;
-            income *= 1 - (sanctioned ? 0.15 : 0) - (blockaded ? 0.2 : 0);
-            income -= units[n] * 0.02;
-            for (Deal d : deals) if (d.seller == n) income += d.moneyPerDay;
-            s.lastIncome = income;
-            s.money = Math.max(-200, s.money + income);
+            Budget b = s.budget();
+            b.clamp();
+            double dealIncome = 0;
+            for (Deal d : deals) if (d.seller == n) dealIncome += d.moneyPerDay;
+            double lim = (sanctioned ? 0.15 : 0) + (blockaded ? 0.2 : 0);
+            Budget.Ledger led = ledger(n, gdp[n], units[n], lim, dealIncome);
+            s.ledger = led;
+            s.lastIncome = led.net();
+            s.inflation = Math.max(0, Math.min(0.6, s.inflation + led.inflationDelta()));
+            s.gdpIndex = Math.max(0.4, Math.min(3.0, s.gdpIndex * (1 + led.growth() / 365.0)));
+            s.infraIndex = Math.max(0, Math.min(1, s.infraIndex + b.infra * 0.012 - 0.0006));
+            s.money = Math.max(b.printMoney ? -600 : -300, s.money + led.net());
+            if (s.money < 0) s.stability -= 0.02;
             double max = manpowerMax(n) * provs[n] / Math.max(1, world.nations.get(n).provinces.size());
             s.manpower = Math.min(max, s.manpower + Math.max(0.05, max * 0.0015));
             double oilDelta = oilOut[n] * 0.05;
             for (Deal d : deals) { if (d.buyer == n) oilDelta += d.oilPerDay; if (d.seller == n) oilDelta -= d.oilPerDay; }
             s.lastOilDelta = oilDelta;
             s.oil = Math.max(0, s.oil + oilDelta);
-            if (atWarAny(n)) { s.warWeariness = Math.min(100, s.warWeariness + 0.08); s.stability -= 0.025; }
-            else { s.warWeariness = Math.max(0, s.warWeariness - 0.15); s.stability += (60 - s.stability) * 0.004; }
+            double target = s.ledger.stabilityTarget();
+            if (atWarAny(n)) { s.warWeariness = Math.min(100, s.warWeariness + 0.08); s.stability -= 0.025; s.stability += (target - 60) * 0.002; }
+            else { s.warWeariness = Math.max(0, s.warWeariness - 0.15); s.stability += (target - s.stability) * 0.004; }
             s.stability = Math.max(0, Math.min(100, s.stability));
             // research
-            if (s.researching != null && --s.researchLeft <= 0) {
+            if (s.researching != null && (s.researchLeft -= Math.max(0.4, 1 + 6 * (b.edu - 0.05))) <= 0) {
                 s.tech[s.researching.ordinal()]++;
                 if (n == player) news("Research complete: " + s.researching.label + " level " + s.tech[s.researching.ordinal()] + ".");
                 s.researching = null;
@@ -678,7 +687,8 @@ public final class GameState implements Serializable {
             // recruitment
             for (Iterator<Recruit> it = s.recruitQueue.iterator(); it.hasNext(); ) {
                 Recruit r = it.next();
-                if (--r.daysLeft <= 0) {
+                r.daysLeft -= rng.nextDouble() < Math.max(0, (b.military - 0.05) * 3) ? 2 : 1;
+                if (r.daysLeft <= 0) {
                     if (owner[r.province] == n && controller[r.province] == n) {
                         Army a = new Army(nextArmyId++, n, r.province, "New Army " + nextArmyId);
                         System.arraycopy(r.units, 0, a.units, 0, UnitType.N);
@@ -693,6 +703,70 @@ public final class GameState implements Serializable {
         }
     }
 
+    /** Pure accounts for one nation given its raw (unscaled) province GDP and unit count. */
+    public Budget.Ledger ledger(int n, double rawGdp, double units, double revenueLoss, double dealIncome) {
+        NationState s = ns[n];
+        Budget b = s.budget();
+        boolean war = atWarAny(n);
+        double focusGdp = 1 - 0.05 * Math.max(0, b.industryFocus) + 0.03 * Math.max(0, -b.industryFocus);
+        double gdp = rawGdp * s.gdpIndex * (1 + 0.10 * s.infraIndex) * Budget.MOB_GDP[b.mobilization] * focusGdp;
+        double eff = Math.max(0.35, Math.min(1.0, 0.58 + 0.30 * Math.min(1.2, b.security / 0.10) + (s.stability - 50) / 250.0 - s.inflation * 0.3));
+        double revenue = gdp / 365.0 * 0.002 * (b.tax / Budget.TAX_DEFAULT) * eff + 0.2;
+        revenue *= Math.max(0, 1 - revenueLoss);
+        double infl = -0.0012;
+        if (b.printMoney) { revenue *= 1.30; infl = 0.004; }
+        revenue *= 1 - s.inflation * 0.5;
+        double upkeep = units * 0.014 * (b.fuelRationing ? 0.95 : 1.0);
+        double dev = revenue * b.dev, infra = revenue * b.infra, edu = revenue * b.edu, wel = revenue * b.welfare, sec = revenue * b.security, mil = revenue * b.military;
+        double net = revenue - upkeep - (dev + infra + edu + wel + sec + mil) + dealIncome;
+        double growth = 0.02 + 0.12 * b.dev + 0.05 * b.edu + 0.03 * s.infraIndex - 0.10 * (b.tax - Budget.TAX_DEFAULT)
+                - (war ? 0.02 : 0) - 0.01 * b.mobilization - s.inflation * 0.08;
+        growth = Math.max(-0.08, Math.min(0.10, growth));
+        double target = 60 + 30 * (b.welfare - 0.08) - 40 * (b.tax - Budget.TAX_DEFAULT) - 30 * s.inflation - Budget.MOB_STABILITY[b.mobilization] - (b.fuelRationing ? 2 : 0);
+        return new Budget.Ledger(gdp, revenue, upkeep, dev, infra, edu, wel, sec, mil, dealIncome, net, eff, growth, target, infl);
+    }
+
+    /** Recomputes the accounts for the current policy without advancing time (used by the UI for live previews). */
+    public Budget.Ledger previewLedger(int n) {
+        double raw = 0, units = 0;
+        for (int p = 0; p < P; p++) {
+            if (owner[p] != n || controller[p] != n) continue;
+            WorldData.ProvinceInfo pi = world.provinces.get(p);
+            raw += pi.gdp * devastation[p] * (1 + 0.15 * factory[p]) * (1 - unrest[p] / 220.0);
+        }
+        for (Army a : armies.values()) if (a.owner == n) units += a.totalUnits();
+        boolean sanctioned = false, blockaded = false;
+        for (int m = 0; m < N; m++) { if (sanction[m][n] && ns[m].alive) sanctioned = true; if (war[m][n] && ns[m].transports > ns[n].transports + 2) blockaded = true; }
+        double deal = 0;
+        for (Deal d : deals) if (d.seller == n) deal += d.moneyPerDay;
+        return ledger(n, raw, units, (sanctioned ? 0.15 : 0) + (blockaded ? 0.2 : 0), deal);
+    }
+
+    public double oilFactor(int n) { return n >= 0 && ns[n].budget().fuelRationing ? 0.7 : 1.0; }
+
+    /** Builds {@code count} levels of one building type in the richest eligible provinces until money runs out. */
+    public Result autoBuild(int n, Building type, int count) {
+        List<Integer> candidates = new ArrayList<>();
+        for (int p = 0; p < P; p++) {
+            if (owner[p] != n || controller[p] != n || level(type, p) >= type.maxLevel) continue;
+            boolean busy = false;
+            for (Construction c : ns[n].constructions) if (c.province == p && c.type == type) busy = true;
+            if (!busy) candidates.add(p);
+        }
+        candidates.sort(Comparator.comparingDouble((Integer p) -> -world.provinces.get(p).gdp * devastation[p]));
+        int built = 0;
+        double spent = 0, before = ns[n].money;
+        for (int p : candidates) {
+            if (built >= count) break;
+            Result r = build(n, p, type);
+            if (!r.ok) { if (r.message.startsWith("Need")) break; continue; }
+            built++;
+        }
+        spent = before - ns[n].money;
+        if (built == 0) return no("Nothing built (no eligible province or not enough money).");
+        return ok(String.format("Started %d x %s for %.0f money.", built, type.label, spent));
+    }
+
     void movement() {
         for (Army a : armies.values()) if (a.raidCooldown > 0) a.raidCooldown--;
         for (Army a : new ArrayList<>(armies.values())) {
@@ -700,8 +774,8 @@ public final class GameState implements Serializable {
             NationState s = a.owner >= 0 ? ns[a.owner] : null;
             double oilNeed = a.oilUsePerDay();
             boolean hasOil = s == null || s.oil > 0;
-            if (s != null) s.oil = Math.max(0, s.oil - oilNeed);
-            double speed = a.speed() * (hasOil ? 1 : (oilNeed > 0.01 ? 0.5 : 1));
+            if (s != null) s.oil = Math.max(0, s.oil - oilNeed * oilFactor(a.owner));
+            double speed = a.speed() * (hasOil ? 1 : (oilNeed > 0.01 ? 0.5 : 1)) * (s == null ? 1 : (1 + 0.15 * s.infraIndex) * (s.budget().fuelRationing ? 0.93 : 1.0));
             double budget = speed;
             while (!a.path.isEmpty() && budget > 0) {
                 int next = a.path.peek();

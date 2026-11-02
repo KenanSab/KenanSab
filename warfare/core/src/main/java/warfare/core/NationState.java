@@ -38,6 +38,12 @@ public final class NationState implements Serializable {
     public final List<AirWing> airWings = new ArrayList<>();
     public final Map<Integer, Double> agents = new HashMap<>();   // target nation -> intel network level 0..100
     public double lastIncome, lastOilDelta;
+    // economy
+    public Budget budget = new Budget();
+    public double gdpIndex = 1.0, infraIndex = 0.2, inflation;
+    public Budget.Ledger ledger;
+
+    public Budget budget() { if (budget == null) budget = new Budget(); return budget; }
     public boolean blockaded;
 
     public NationState(int index) { this.index = index; }

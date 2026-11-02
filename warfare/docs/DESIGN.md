@@ -25,13 +25,17 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 
 ## Status
 
-**Built and covered by tests** (`core`: 17, `desktop`: 7 incl. a real-window UI test under xvfb):
+**Built and covered by tests** (`core`: 23, `desktop`: 8 incl. a real-window UI test under xvfb):
 
 * Map: 3,476 land provinces from real administrative regions, 271 sea zones, 198 nations, smooth vector borders.
 * Fog of war: vision quality levels, intel decay, hidden ownership/buildings/secret pacts, satellites, radar, recon,
   agents, allied sharing, **decoy forces** (look real from afar, exposed up close) and **special-forces sabotage raids**.
 * Tactic cards with soft counters, composition/terrain/surprise effects, General (auto) mode that only uses visible intel.
 * Economy (money, manpower, industry, oil), buildings, recruitment, research tracks, air wings, simple navy, nukes.
+* **Economy panel** (left dock, key E): tax rate with efficiency, six budget sliders (development, infrastructure, education,
+  welfare, security, military) with live effect text, policies (mobilization, industry focus, fuel rationing, printing money),
+  daily ledger, presets and a build-economy tool. The AI uses the same controls (war stance vs peace stance).
+* Capitals: real capital cities (Natural Earth) are marked with stars on the map; yours is gold, a lost capital turns red.
 * Diplomacy (war, negotiated peace, alliances, sanctions, aid, oil deals), stability, coups, events, insurgency.
 * AI nations that play under fog, with peacetime build-up capped relative to their starting force.
 * UI: top bar, card-based panels, nation picker, flags, icons, tutorial, achievements (16) with toasts, settings,
