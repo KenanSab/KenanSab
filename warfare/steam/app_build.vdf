@@ -1,0 +1,12 @@
+"appbuild"
+{
+	"appid" "APPID"
+	"desc" "Warfare build"
+	"buildoutput" "../steam-output"
+	"contentroot" "../desktop/build/jpackage/Warfare"
+	"setlive" ""
+	"depots"
+	{
+		"DEPOTID" "depot_build.vdf"
+	}
+}

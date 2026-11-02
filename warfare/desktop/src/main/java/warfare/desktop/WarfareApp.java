@@ -73,6 +73,15 @@ public final class WarfareApp {
 
     static Path findAssets(String[] args) {
         for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--assets")) return Path.of(args[i + 1]);
+        // packaged builds: look next to the jars (installDist: lib/ -> ../assets, jpackage: lib/app/ -> ../assets)
+        try {
+            Path jar = Path.of(WarfareApp.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            Path dir = Files.isDirectory(jar) ? jar : jar.getParent();
+            for (Path base : new Path[]{dir, dir.getParent(), dir.getParent() == null ? dir : dir.getParent().getParent()})
+                if (base != null && Files.exists(base.resolve("assets/map/provinces.png"))) return base.resolve("assets/map");
+        } catch (Exception ignored) {}
+        String home = System.getProperty("warfare.home");
+        if (home != null && Files.exists(Path.of(home, "assets/map/provinces.png"))) return Path.of(home, "assets/map");
         for (String c : new String[]{"assets/map", "../assets/map", "../../assets/map", "warfare/assets/map"})
             if (Files.exists(Path.of(c, "provinces.png"))) return Path.of(c);
         throw new IllegalStateException("Cannot find assets/map. Pass --assets <dir>.");

@@ -6,4 +6,25 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
 }
-application { mainClass = 'warfare.desktop.WarfareApp' }
+application {
+    mainClass = 'warfare.desktop.WarfareApp'
+    applicationName = 'warfare'
+    applicationDefaultJvmArgs = ['-Xmx2g']
+}
+
+// ship the generated map, fonts, icons and flags next to the jars
+distributions {
+    main { contents { from('../assets') { into 'assets' } } }
+}
+
+// Native app image with a bundled runtime (run on the target OS: Windows for the Steam build).
+tasks.register('packageApp', Exec) {
+    dependsOn 'installDist'
+    def install = layout.buildDirectory.dir('install/warfare').get().asFile
+    def dest = layout.buildDirectory.dir('jpackage').get().asFile
+    doFirst { delete dest }
+    commandLine 'jpackage', '--type', 'app-image', '--name', 'Warfare', '--app-version', '0.1.0',
+            '--input', new File(install, 'lib').path, '--main-jar', 'desktop.jar', '--main-class', 'warfare.desktop.WarfareApp',
+            '--dest', dest.path, '--app-content', new File(install, 'assets').path,
+            '--java-options', '-Xmx2g'
+}
