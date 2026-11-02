@@ -62,8 +62,8 @@ public final class MapGenerator {
 
     public static void main(String[] args) throws Exception {
         Path a0 = Path.of(args[0]), a1 = Path.of(args[1]), out = Path.of(args[2]);
-        double splitArea = args.length > 3 ? Double.parseDouble(args[3]) : 5200;
-        int minLand = args.length > 4 ? Integer.parseInt(args[4]) : 60;
+        double splitArea = args.length > 3 ? Double.parseDouble(args[3]) : 900;
+        double minArea = args.length > 4 ? Double.parseDouble(args[4]) : 420;      // smallest wanted province, in cos-weighted pixels (~44 km2 each)
         int seaZones = args.length > 5 ? Integer.parseInt(args[5]) : 260;
         Path places = args.length > 6 ? Path.of(args[6]) : null;
         Files.createDirectories(out);
@@ -188,7 +188,7 @@ public final class MapGenerator {
             nextProv += seeds.length;
         }
 
-        Result r = splitAndMerge(prov, nat, minLand, 3000);
+        Result r = splitAndMerge(prov, nat, 12, 3000, cosLat, minArea);
         System.out.println("final provinces: land=" + r.landCount + " sea=" + r.seaCount + "  (" + (System.currentTimeMillis() - t0) / 1000 + "s)");
         String[] names = buildNames(nations, regions, prov, origin, keys, R, r);
         Map<String, double[]> capitals = places == null ? Map.of() : readCapitals(places);
@@ -397,7 +397,7 @@ public final class MapGenerator {
     // ------------------------------------------------------------------ fragments
     record Result(int[] id, int landCount, int seaCount, int[] nation, boolean[] isSea) {}
 
-    static Result splitAndMerge(int[] prov, byte[] nat, int minLand, int minSea) {
+    static Result splitAndMerge(int[] prov, byte[] nat, int minLand, int minSea, double[] cosLat, double minArea) {
         int total = prov.length;
         int[] comp = new int[total];
         Arrays.fill(comp, -1);
@@ -423,6 +423,7 @@ public final class MapGenerator {
         for (int s = 0; s < total; s++) { int c = comp[s]; compSea[c] = nat[s] == 0; compNation[c] = nat[s] & 0xFF; }
         int[] parent = new int[nc];
         for (int i = 0; i < nc; i++) parent[i] = i;
+        agglomerateLand(comp, compSea, compNation, parent, sizes, nc, cosLat, minArea);
         Integer[] order = new Integer[nc];
         for (int i = 0; i < nc; i++) order[i] = i;
         Arrays.sort(order, Comparator.comparingInt(sizes::get));
@@ -431,7 +432,7 @@ public final class MapGenerator {
         for (int s = 0; s < total; s++) { List<Integer> l = small.get(comp[s]); if (l != null) l.add(s); }
         for (int c : order) {
             List<Integer> pix = small.get(c);
-            if (pix == null) continue;
+            if (pix == null || find(parent, c) != c) continue;
             int root = find(parent, c);
             Map<Integer, Integer> same = new HashMap<>(), any = new HashMap<>();
             for (int s : pix) {
@@ -479,6 +480,74 @@ public final class MapGenerator {
         return new Result(pid, land, seaN, nationOf, seaOf);
     }
 
+
+    /**
+     * Makes provinces comparable in size across nations: land pieces smaller than minArea (cos-weighted pixels) are
+     * merged into their smallest well-connected neighbour of the same nation; remote small islands join the nearest
+     * province of their nation as archipelago provinces.
+     */
+    static void agglomerateLand(int[] comp, boolean[] compSea, int[] compNation, int[] parent, List<Integer> sizes, int nc, double[] cosLat, double minArea) {
+        double[] area = new double[nc], sx = new double[nc], sy = new double[nc];
+        List<Map<Integer, Integer>> adj = new ArrayList<>();
+        for (int i = 0; i < nc; i++) adj.add(compSea[i] ? null : new HashMap<>());
+        for (int p = 0; p < comp.length; p++) {
+            int c = comp[p];
+            if (compSea[c]) continue;
+            int x = p % HW, y = p / HW;
+            area[c] += cosLat[y]; sx[c] += x; sy[c] += y;
+            if (x < HW - 1) link(adj, comp, compSea, compNation, c, comp[p + 1]);
+            if (y < HH - 1) link(adj, comp, compSea, compNation, c, comp[p + HW]);
+        }
+        PriorityQueue<double[]> pq = new PriorityQueue<>(Comparator.comparingDouble(a -> a[0]));
+        for (int c = 0; c < nc; c++) if (!compSea[c] && area[c] < minArea) pq.add(new double[]{area[c], c});
+        int merged = 0;
+        while (!pq.isEmpty()) {
+            double[] e = pq.poll();
+            int r = (int) e[1];
+            if (parent[r] != r || area[r] != e[0] || area[r] >= minArea) continue;
+            Map<Integer, Integer> nb = adj.get(r);
+            int best = -1; double bestArea = Double.MAX_VALUE;
+            for (var en : nb.entrySet()) if (en.getValue() >= 8 && area[en.getKey()] < bestArea) { bestArea = area[en.getKey()]; best = en.getKey(); }
+            if (best < 0) { int bc = 0; for (var en : nb.entrySet()) if (en.getValue() > bc) { bc = en.getValue(); best = en.getKey(); } }
+            if (best < 0) continue;                                    // an island: handled below
+            parent[r] = best;
+            area[best] += area[r]; sx[best] += sx[r]; sy[best] += sy[r];
+            sizes.set(best, sizes.get(best) + sizes.get(r));
+            Map<Integer, Integer> ab = adj.get(best);
+            for (var en : nb.entrySet()) {
+                int n = en.getKey();
+                if (n == best) continue;
+                ab.merge(n, en.getValue(), Integer::sum);
+                Map<Integer, Integer> an = adj.get(n);
+                an.remove(r);
+                an.merge(best, en.getValue(), Integer::sum);
+            }
+            ab.remove(r);
+            merged++;
+            if (area[best] < minArea) pq.add(new double[]{area[best], best});
+        }
+        // remote small islands: join the nearest province of the same nation within ~8 degrees
+        int joined = 0;
+        for (int c = 0; c < nc; c++) {
+            if (compSea[c] || parent[c] != c || area[c] >= minArea || !adj.get(c).isEmpty()) continue;
+            double cx = sx[c] / sizes.get(c), cy = sy[c] / sizes.get(c);
+            int bestC = -1; double bd = 135;
+            for (int o = 0; o < nc; o++) {
+                if (o == c || compSea[o] || parent[o] != o || compNation[o] != compNation[c] || area[o] < minArea * 0.5) continue;
+                double d = Math.hypot(sx[o] / sizes.get(o) - cx, sy[o] / sizes.get(o) - cy);
+                if (d < bd) { bd = d; bestC = o; }
+            }
+            if (bestC >= 0) { parent[c] = bestC; area[bestC] += area[c]; sx[bestC] += sx[c]; sy[bestC] += sy[c]; sizes.set(bestC, sizes.get(bestC) + sizes.get(c)); joined++; }
+        }
+        System.out.println("agglomeration: merged " + merged + " small provinces, joined " + joined + " islands");
+    }
+
+    private static void link(List<Map<Integer, Integer>> adj, int[] comp, boolean[] compSea, int[] compNation, int a, int b) {
+        if (a == b || compSea[b] || compNation[a] != compNation[b]) return;
+        adj.get(a).merge(b, 1, Integer::sum);
+        adj.get(b).merge(a, 1, Integer::sum);
+    }
+
     static int find(int[] parent, int x) {
         while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
         return x;
@@ -508,7 +577,21 @@ public final class MapGenerator {
         ImageIO.write(img, "png", out.resolve("provinces.png").toFile());
 
         double[] cx = new double[total], cy = new double[total];
-        for (int i = 0; i < total; i++) { cx[i] = sx[i] / cnt[i] / SCALE; cy[i] = sy[i] / cnt[i] / SCALE; }
+        for (int i = 0; i < total; i++) {
+            double mx = sx[i] / cnt[i], my = sy[i] / cnt[i];
+            if (!r.isSea[i] && id[Math.min(HH - 1, (int) my) * HW + Math.min(HW - 1, (int) mx)] != i) {
+                // ring-shaped or multi-part provinces: put the marker on the province's own land, nearest to the middle
+                outer:
+                for (int rad = 1; rad < 160; rad++)
+                    for (int dy = -rad; dy <= rad; dy++) for (int dx = -rad; dx <= rad; dx++) {
+                        if (Math.max(Math.abs(dx), Math.abs(dy)) != rad) continue;
+                        int x = (int) mx + dx, y = (int) my + dy;
+                        if (x < 0 || y < 0 || x >= HW || y >= HH) continue;
+                        if (id[y * HW + x] == i) { mx = x; my = y; break outer; }
+                    }
+            }
+            cx[i] = mx / SCALE; cy[i] = my / SCALE;
+        }
         int[] capital = new int[nations.size()];
         Arrays.fill(capital, -1);
         String[] capName = new String[nations.size()];

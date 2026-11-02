@@ -27,6 +27,9 @@ public final class GameState implements Serializable {
     // nation dynamic state
     public final NationState[] ns;
     public final boolean[][] war, ally, secret, sanction;
+    public final float[][] opinion;
+    public final int[][] peaceCooldown, allianceCooldown;
+    public int lastPeaceOfferDay = -1000;
     public final List<Deal> deals = new ArrayList<>();
     public final Map<Integer, Army> armies = new LinkedHashMap<>();
     public final Map<Integer, Combat.Battle> battles = new HashMap<>();
@@ -54,6 +57,7 @@ public final class GameState implements Serializable {
         unrest = new float[P]; occupy = new float[P]; devastation = new float[P];
         ns = new NationState[N];
         war = new boolean[N][N]; ally = new boolean[N][N]; secret = new boolean[N][N]; sanction = new boolean[N][N];
+        opinion = new float[N][N]; peaceCooldown = new int[N][N]; allianceCooldown = new int[N][N];
         intel = new Intel[N];
         for (int p = 0; p < P; p++) {
             owner[p] = controller[p] = w.provinces.get(p).sea ? -2 : w.provinces.get(p).nation;
@@ -69,6 +73,8 @@ public final class GameState implements Serializable {
             ns[n].nukes = ni.nukes;
             ns[n].subs = ni.nukes >= 8 ? 2 : ni.nukes >= 5 ? 1 : 0;      // ballistic-missile submarines can launch without a silo
             ns[n].transports = (int) Math.max(0, Math.min(12, Math.sqrt(ni.gdp) / 120));
+            ns[n].gov = Government.of(ni.tag);
+            ns[n].nextElection = 200 + Math.abs(ni.tag.hashCode()) % Politics.ELECTION_DAYS;
             ns[n].infraIndex = Math.max(0.1, Math.min(0.6, 0.15 + 0.45 * Math.min(1.0, rich / 30000.0)));
             ns[n].stability = 55 + (rich > 15000 ? 12 : 0) + (Math.abs(ni.tag.hashCode()) % 20);
             if (rich > 20000) ns[n].tech[0] = 1;
@@ -94,6 +100,7 @@ public final class GameState implements Serializable {
         for (int n = 0; n < N; n++) {
             intel[n] = null;
         }
+        Relations.init(this);
         initForces();
         Vision.updateAll(this);
     }
@@ -179,6 +186,26 @@ public final class GameState implements Serializable {
         String ba = world.nations.get(a).bloc;
         return !ba.equals("NONE") && ba.equals(world.nations.get(b).bloc);
     }
+
+    private transient boolean[][] borderCache;
+
+    public boolean sharesBorder(int a, int b) {
+        if (borderCache == null) {
+            borderCache = new boolean[N][N];
+            for (WorldData.ProvinceInfo p : world.provinces) {
+                if (p.sea || p.nation < 0) continue;
+                for (int nb : p.neighbours) {
+                    WorldData.ProvinceInfo q = world.provinces.get(nb);
+                    if (!q.sea && q.nation >= 0 && q.nation != p.nation) borderCache[p.nation][q.nation] = true;
+                }
+            }
+        }
+        return borderCache[a][b];
+    }
+
+    public int directAlliances(int n) { int c = 0; for (int m = 0; m < N; m++) if (m != n && ally[n][m] && ns[m].alive) c++; return c; }
+
+    public double opinionOf(int observer, int target) { return opinion[observer][target]; }
 
     public int ownedProvinces(int n) { int c = 0; for (int p = 0; p < P; p++) if (owner[p] == n) c++; return c; }
 
@@ -429,6 +456,11 @@ public final class GameState implements Serializable {
         ns[a].lastWarDay = ns[b].lastWarDay = day;
         ns[a].stability = Math.max(0, ns[a].stability - 3);
         news("WAR: " + nationName(a) + " declares war on " + nationName(b) + "!");
+        Relations.both(this, a, b, -60);
+        for (int c = 0; c < N; c++) if (c != a && c != b && ns[c].alive) {
+            if (isAlly(c, b)) Relations.both(this, c, a, -40);
+            else Relations.change(this, c, a, -6 + (opinion[c][b] > 30 ? -8 : 0));
+        }
         for (int c = 0; c < N; c++) {
             if (c == a || c == b || !ns[c].alive) continue;
             if (isAlly(c, b) && !isAlly(c, a) && !war[c][a] && rng.nextDouble() < 0.85) joinWar(c, a, "defence of " + nationName(b));
@@ -454,7 +486,7 @@ public final class GameState implements Serializable {
             accept = ratio > 1.5 || ns[b].warWeariness > 60 || lostB > 0.15 || ns[b].stability < 30 || (day - ns[b].lastWarDay > 150 && rng.nextDouble() < 0.5);
             if (ratio < 0.8 && lostB < 0.05) accept = false;
         } else accept = true;
-        if (!accept) return no(nationName(b) + " refuses to negotiate.");
+        if (!accept) { peaceCooldown[a][b] = peaceCooldown[b][a] = Math.max(peaceCooldown[a][b], day + 40); return no(nationName(b) + " refuses to negotiate."); }
         makePeace(a, b);
         return ok("Peace with " + nationName(b) + ".");
     }
@@ -484,32 +516,40 @@ public final class GameState implements Serializable {
     }
 
     public Result formAlliance(int a, int b) {
+        if (a == b || !ns[b].alive) return no("Invalid target.");
         if (isAlly(a, b)) return no("Already allied.");
         if (war[a][b]) return no("At war.");
-        boolean common = false;
-        for (int c = 0; c < N; c++) if (war[a][c] && war[b][c]) common = true;
-        boolean accept = common || world.nations.get(a).bloc.equals(world.nations.get(b).bloc) || (b != player && ns[b].stability > 40 && rng.nextDouble() < 0.15);
-        if (!accept) return no(nationName(b) + " declines.");
+        if (day < allianceCooldown[a][b]) return no(nationName(b) + " recently turned you down. Try again in " + (allianceCooldown[a][b] - day) + " days.");
+        Relations.Verdict v = Relations.allianceVerdict(this, a, b);
+        if (!v.accept()) {
+            allianceCooldown[a][b] = allianceCooldown[b][a] = day + 60;
+            Relations.change(this, b, a, -2);
+            return no(String.format("%s refuses (score %.0f, needs %.0f): %s.", nationName(b), v.score(), v.needed(), v.reason()));
+        }
         ally[a][b] = ally[b][a] = true;
+        Relations.both(this, a, b, 8);
         news(nationName(a) + " and " + nationName(b) + " sign an alliance.");
-        return ok("Alliance formed.");
+        return ok(String.format("%s accepts (score %.0f): %s.", nationName(b), v.score(), v.reason()));
     }
 
     public Result breakAlliance(int a, int b) {
         if (!ally[a][b]) return no("No direct alliance.");
         ally[a][b] = ally[b][a] = secret[a][b] = secret[b][a] = false;
+        Relations.both(this, a, b, -25);
+        allianceCooldown[a][b] = allianceCooldown[b][a] = day + 180;
         return ok("Alliance dissolved.");
     }
 
     public Result toggleSanction(int a, int b) {
         sanction[a][b] = !sanction[a][b];
-        if (sanction[a][b]) news(nationName(a) + " imposes sanctions on " + nationName(b) + ".");
+        if (sanction[a][b]) { news(nationName(a) + " imposes sanctions on " + nationName(b) + "."); Relations.change(this, b, a, -25); }
         return ok(sanction[a][b] ? "Sanctions imposed." : "Sanctions lifted.");
     }
 
     public Result sendAid(int a, int b, double amount) {
         if (ns[a].money < amount) return no("Not enough money.");
         ns[a].money -= amount; ns[b].money += amount;
+        Relations.change(this, b, a, Math.min(12, amount / 4));
         return ok("Sent " + (int) amount + " to " + nationName(b) + ".");
     }
 
@@ -520,6 +560,7 @@ public final class GameState implements Serializable {
         Deal d = new Deal();
         d.seller = seller; d.buyer = buyer; d.oilPerDay = 0.4; d.moneyPerDay = 0.5;
         deals.add(d);
+        Relations.both(this, seller, buyer, 8);
         return ok("Oil trade agreed.");
     }
 
@@ -548,6 +589,7 @@ public final class GameState implements Serializable {
         if (isSea(target)) return no("Target must be land.");
         s.nukes--;
         if (n == player) stNukes++;
+        for (int c = 0; c < N; c++) if (c != n) Relations.change(this, c, n, -45);
         nukesInFlight.add(new int[]{n, target, day + 1});
         news("ALERT: " + nationName(n) + " launches a nuclear missile at " + prov(target).name + " (" + nationName(owner[target]) + ")!");
         return ok("Missile launched. Impact in 1 day.");
@@ -610,6 +652,8 @@ public final class GameState implements Serializable {
     public void advanceDay() {
         day++;
         economy();
+        for (int n = 0; n < N; n++) if (ns[n].alive) Politics.daily(this, n);
+        Relations.drift(this);
         movement();
         War.contacts(this);
         War.resolveBattles(this);

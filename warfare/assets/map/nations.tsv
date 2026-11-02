@@ -1,199 +1,200 @@
 tag	name	continent	population	gdpMillions	capital	bloc	iso2	capitalName
-IDN	Indonesia	Asia	270625568	1119190	3021	NONE	id	Jakarta
-MYS	Malaysia	Asia	31949777	364681	2759	NONE	my	Kuala Lumpur
-CHL	Chile	South America	18952038	282318	3380	NONE	cl	Santiago
-BOL	Bolivia	South America	11513100	40895	3242	NONE	bo	Sucre
-PER	Peru	South America	32510453	226848	3107	NONE	pe	Lima
-ARG	Argentina	South America	44938712	445445	3385	NONE	ar	Buenos Aires
-GBR	United Kingdom	Europe	67358901	2863015	667	NATO	gb	London
-CYP	Cyprus	Asia	1198575	24948	1625	NONE	cy	Nicosia
-IND	India	Asia	1366417754	2868929	1780	NONE	in	New Delhi
-CHN	China	Asia	1405862845	14762473	1290	EASTERN	cn	Beijing
-ISR	Israel	Asia	13738606	410928	1733	NONE	il	Jerusalem
-LBN	Lebanon	Asia	6855713	51991	1650	NONE	lb	Beirut
-ETH	Ethiopia	Africa	112078730	95912	2493	NONE	et	Addis Ababa
-SDS	South Sudan	Africa	11062113	11998	2616	NONE	ss	
-SOM	Somalia	Africa	10192317	4719	2775	NONE	so	Mogadishu
-KEN	Kenya	Africa	52573973	95503	2858	NONE	ke	Nairobi
-MWI	Malawi	Africa	18628747	7666	3160	NONE	mw	Lilongwe
-TZA	United Republic of Tanzania	Africa	58005463	63177	3017	NONE	tz	Dar es Salaam
-SYR	Syria	Asia	17070135	98830	1672	NONE	sy	Damascus
-SOL	Somaliland	Africa	5096159	17836	2429	NONE		Hargeisa
-FRA	France	Europe	67692492	2732870	760	NATO	fr	Paris
-SUR	Suriname	South America	581363	3697	2703	NONE	sr	Paramaribo
-GUY	Guyana	South America	782766	5173	2656	NONE	gy	Georgetown
-KOR	South Korea	Asia	51709098	1646739	1449	PACIFIC	kr	Seoul
-PRK	North Korea	Asia	25666161	40000	1393	EASTERN	kp	Pyongyang
-MAR	Morocco	Africa	36471769	119700	1674	NONE	ma	Rabat
-SAH	Western Sahara	Africa	603253	907	1890	NONE	eh	
-CRI	Costa Rica	North America	5047561	61801	2449	NONE	cr	San José
-NIC	Nicaragua	North America	6545502	12520	2349	NONE	ni	Managua
-COG	Republic of the Congo	Africa	5380508	12267	2963	NONE	cg	Brazzaville
-COD	Democratic Republic of the Congo	Africa	86790567	50400	2974	NONE	cd	Kinshasa
-BTN	Bhutan	Asia	763092	2530	1846	NONE	bt	Thimphu
-UKR	Ukraine	Europe	44385155	153781	694	NONE	ua	Kyiv
-BLR	Belarus	Europe	9466856	63080	543	CSTO	by	Minsk
-NAM	Namibia	Africa	2494530	12366	3281	NONE	na	Windhoek
-ZAF	South Africa	Africa	58558270	351431	3338	NONE	za	Bloemfontein
-NLD	Netherlands	Europe	17637435	914392	623	NATO	nl	Amsterdam
-OMN	Oman	Asia	4974986	76331	1929	NONE	om	Muscat
-UZB	Uzbekistan	Asia	33580650	57921	1196	NONE	uz	Tashkent
-KAZ	Kazakhstan	Asia	18550105	182261	591	CSTO	kz	Nur-Sultan
-TJK	Tajikistan	Asia	9321018	8116	1368	CSTO	tj	Dushanbe
-LTU	Lithuania	Europe	2786844	54627	515	NATO	lt	Vilnius
-BRA	Brazil	South America	211049527	1839758	3192	NONE	br	Brasília
-URY	Uruguay	South America	3461734	56045	3392	NONE	uy	Montevideo
-MNG	Mongolia	Asia	3225167	13996	836	NONE	mn	Ulaanbaatar
-RUS	Russia	Europe	144373535	1699876	506	CSTO	ru	Moscow
-CZE	Czechia	Europe	10669709	250680	728	NATO	cz	Prague
-DEU	Germany	Europe	83132799	3861123	599	NATO	de	Berlin
-EST	Estonia	Europe	1326590	31471	398	NATO	ee	Tallinn
-LVA	Latvia	Europe	1912789	34102	440	NATO	lv	Riga
-NOR	Norway	Europe	5347896	403336	366	NATO	no	Oslo
-SWE	Sweden	Europe	10285453	530883	381	NATO	se	Stockholm
-FIN	Finland	Europe	5550198	270859	364	NATO	fi	Helsinki
-VNM	Vietnam	Asia	96462106	261921	1992	NONE	vn	Hanoi
-KHM	Cambodia	Asia	16486542	27089	2402	NONE	kh	Phnom Penh
-LUX	Luxembourg	Europe	619896	71104	745	NATO	lu	Luxembourg
-ARE	United Arab Emirates	Asia	9770529	421142	1907	NONE	ae	Abu Dhabi
-BEL	Belgium	Europe	11484055	533097	711	NATO	be	Brussels
-GEO	Georgia	Asia	3720382	17477	1227	NONE	ge	Tbilisi
-MKD	North Macedonia	Europe	2083459	12547	1189	NATO	mk	Skopje
-ALB	Albania	Europe	2854191	15279	1235	NATO	al	Tirana
-AZE	Azerbaijan	Asia	10023318	48047	1297	NONE	az	Baku
-KOS	Kosovo	Europe	1794248	7926	1131	NONE	xk	Pristina
-TUR	Turkey	Asia	83429615	761425	1308	NATO	tr	Ankara
-ESP	Spain	Europe	47076781	1393490	1272	NATO	es	Madrid
-LAO	Laos	Asia	7169455	18173	2081	NONE	la	Vientiane
-KGZ	Kyrgyzstan	Asia	6456900	8454	1133	CSTO	kg	Bishkek
-ARM	Armenia	Asia	2957731	13672	1310	CSTO	am	Yerevan
-DNK	Denmark	Europe	5923456	356271	497	NATO	dk	København
-LBY	Libya	Africa	6777452	52091	1717	NONE	ly	Tripoli
-TUN	Tunisia	Africa	11694719	38796	1485	NONE	tn	Tunis
-ROU	Romania	Europe	19356544	250077	1042	NATO	ro	Bucharest
-HUN	Hungary	Europe	9769949	163469	851	NATO	hu	Budapest
-SVK	Slovakia	Europe	5454073	105079	820	NATO	sk	Bratislava
-POL	Poland	Europe	37970874	595858	609	NATO	pl	Warsaw
-IRL	Ireland	Europe	4941444	388698	604	NONE	ie	Dublin
-GRC	Greece	Europe	10716322	209852	1440	NATO	gr	Athens
-ZMB	Zambia	Africa	17861030	23309	3179	NONE	zm	Lusaka
-SLE	Sierra Leone	Africa	7813215	4121	2514	NONE	sl	Freetown
-GIN	Guinea	Africa	12771246	12296	2475	NONE	gn	Conakry
-LBR	Liberia	Africa	4937374	3070	2638	NONE	lr	Monrovia
-CAF	Central African Republic	Africa	4745185	2220	2708	NONE	cf	Bangui
-SDN	Sudan	Africa	42813238	30513	2139	NONE	sd	Khartoum
-DJI	Djibouti	Africa	973560	3324	2406	NONE	dj	Djibouti
-ERI	Eritrea	Africa	6081196	2065	2095	NONE	er	Asmara
-AUT	Austria	Europe	8877067	445075	802	NONE	at	Vienna
-IRQ	Iraq	Asia	39309783	234094	1631	NONE	iq	Baghdad
-ITA	Italy	Europe	60297396	2003576	1195	NATO	it	Rome
-CHE	Switzerland	Europe	8574832	703082	877	NONE	ch	Bern
-IRN	Iran	Asia	82913906	453996	1566	NONE	ir	Tehran
-LIE	Liechtenstein	Europe	38019	6876	886	NONE	li	Vaduz
-CIV	Ivory Coast	Africa	25716544	58539	2635	NONE	ci	Yamoussoukro
+IDN	Indonesia	Asia	270625568	1119190	2894	NONE	id	Jakarta
+MYS	Malaysia	Asia	31949777	364681	2623	NONE	my	Kuala Lumpur
+CHL	Chile	South America	18952038	282318	3532	NONE	cl	Santiago
+BOL	Bolivia	South America	11513100	40895	3231	NONE	bo	Sucre
+PER	Peru	South America	32510453	226848	3009	NONE	pe	Lima
+ARG	Argentina	South America	44938712	445445	3547	NONE	ar	Buenos Aires
+GBR	United Kingdom	Europe	67358901	2863015	713	NATO	gb	London
+CYP	Cyprus	Asia	1198575	24948	1505	NONE	cy	Nicosia
+IND	India	Asia	1366417754	2868929	1700	NONE	in	New Delhi
+CHN	China	Asia	1405862845	14762473	1250	EASTERN	cn	Beijing
+ISR	Israel	Asia	13738606	410928	1574	NONE	il	Jerusalem
+LBN	Lebanon	Asia	6855713	51991	1526	NONE	lb	Beirut
+ETH	Ethiopia	Africa	112078730	95912	2436	NONE	et	Addis Ababa
+SDS	South Sudan	Africa	11062113	11998	2515	NONE	ss	
+SOM	Somalia	Africa	10192317	4719	2641	NONE	so	Mogadishu
+KEN	Kenya	Africa	52573973	95503	2701	NONE	ke	Nairobi
+MWI	Malawi	Africa	18628747	7666	3030	NONE	mw	Lilongwe
+TZA	United Republic of Tanzania	Africa	58005463	63177	2888	NONE	tz	Dar es Salaam
+SYR	Syria	Asia	17070135	98830	1552	NONE	sy	Damascus
+SOL	Somaliland	Africa	5096159	17836	2396	NONE		Hargeisa
+FRA	France	Europe	67692492	2732870	858	NATO	fr	Paris
+SUR	Suriname	South America	581363	3697	2569	NONE	sr	Paramaribo
+GUY	Guyana	South America	782766	5173	2541	NONE	gy	Georgetown
+KOR	South Korea	Asia	51709098	1646739	1375	PACIFIC	kr	Seoul
+PRK	North Korea	Asia	25666161	40000	1324	EASTERN	kp	Pyongyang
+MAR	Morocco	Africa	36471769	119700	1467	NONE	ma	Rabat
+SAH	Western Sahara	Africa	603253	907	1892	NONE	eh	
+CRI	Costa Rica	North America	5047561	61801	2414	NONE	cr	San José
+NIC	Nicaragua	North America	6545502	12520	2361	NONE	ni	Managua
+COG	Republic of the Congo	Africa	5380508	12267	2811	NONE	cg	Brazzaville
+COD	Democratic Republic of the Congo	Africa	86790567	50400	2779	NONE	cd	Kinshasa
+BTN	Bhutan	Asia	763092	2530	1790	NONE	bt	Thimphu
+UKR	Ukraine	Europe	44385155	153781	785	NONE	ua	Kyiv
+BLR	Belarus	Europe	9466856	63080	621	CSTO	by	Minsk
+NAM	Namibia	Africa	2494530	12366	3319	NONE	na	Windhoek
+ZAF	South Africa	Africa	58558270	351431	3471	NONE	za	Bloemfontein
+NLD	Netherlands	Europe	17637435	914392	686	NATO	nl	Amsterdam
+OMN	Oman	Asia	4974986	76331	1976	NONE	om	Muscat
+UZB	Uzbekistan	Asia	33580650	57921	1191	NONE	uz	Tashkent
+KAZ	Kazakhstan	Asia	18550105	182261	765	CSTO	kz	Nur-Sultan
+TJK	Tajikistan	Asia	9321018	8116	1292	CSTO	tj	Dushanbe
+LTU	Lithuania	Europe	2786844	54627	577	NATO	lt	Vilnius
+BRA	Brazil	South America	211049527	1839758	3116	NONE	br	Brasília
+URY	Uruguay	South America	3461734	56045	3548	NONE	uy	Montevideo
+MNG	Mongolia	Asia	3225167	13996	889	NONE	mn	Ulaanbaatar
+RUS	Russia	Europe	144373535	1699876	592	CSTO	ru	Moscow
+CZE	Czechia	Europe	10669709	250680	807	NATO	cz	Prague
+DEU	Germany	Europe	83132799	3861123	666	NATO	de	Berlin
+EST	Estonia	Europe	1326590	31471	472	NATO	ee	Tallinn
+LVA	Latvia	Europe	1912789	34102	530	NATO	lv	Riga
+NOR	Norway	Europe	5347896	403336	422	NATO	no	Oslo
+SWE	Sweden	Europe	10285453	530883	436	NATO	se	Stockholm
+FIN	Finland	Europe	5550198	270859	372	NATO	fi	Helsinki
+VNM	Vietnam	Asia	96462106	261921	2004	NONE	vn	Hanoi
+KHM	Cambodia	Asia	16486542	27089	2365	NONE	kh	Phnom Penh
+LUX	Luxembourg	Europe	619896	71104	842	NATO	lu	Luxembourg
+ARE	United Arab Emirates	Asia	9770529	421142	1889	NONE	ae	Abu Dhabi
+BEL	Belgium	Europe	11484055	533097	784	NATO	be	Brussels
+GEO	Georgia	Asia	3720382	17477	1172	NONE	ge	Tbilisi
+MKD	North Macedonia	Europe	2083459	12547	1184	NATO	mk	Skopje
+ALB	Albania	Europe	2854191	15279	1175	NATO	al	Tirana
+AZE	Azerbaijan	Asia	10023318	48047	1212	NONE	az	Baku
+KOS	Kosovo	Europe	1794248	7926	1150	NONE	xk	Pristina
+TUR	Turkey	Asia	83429615	761425	1261	NATO	tr	Ankara
+ESP	Spain	Europe	47076781	1393490	1153	NATO	es	Madrid
+LAO	Laos	Asia	7169455	18173	2138	NONE	la	Vientiane
+KGZ	Kyrgyzstan	Asia	6456900	8454	1151	CSTO	kg	Bishkek
+ARM	Armenia	Asia	2957731	13672	1236	CSTO	am	Yerevan
+DNK	Denmark	Europe	5923456	356271	529	NATO	dk	København
+LBY	Libya	Africa	6777452	52091	1585	NONE	ly	Tripoli
+TUN	Tunisia	Africa	11694719	38796	1398	NONE	tn	Tunis
+ROU	Romania	Europe	19356544	250077	1056	NATO	ro	Bucharest
+HUN	Hungary	Europe	9769949	163469	946	NATO	hu	Budapest
+SVK	Slovakia	Europe	5454073	105079	864	NATO	sk	Bratislava
+POL	Poland	Europe	37970874	595858	690	NATO	pl	Warsaw
+IRL	Ireland	Europe	4941444	388698	664	NONE	ie	Dublin
+GRC	Greece	Europe	10716322	209852	1325	NATO	gr	Athens
+ZMB	Zambia	Africa	17861030	23309	3127	NONE	zm	Lusaka
+SLE	Sierra Leone	Africa	7813215	4121	2449	NONE	sl	Freetown
+GIN	Guinea	Africa	12771246	12296	2399	NONE	gn	Conakry
+LBR	Liberia	Africa	4937374	3070	2487	NONE	lr	Monrovia
+CAF	Central African Republic	Africa	4745185	2220	2571	NONE	cf	Bangui
+SDN	Sudan	Africa	42813238	30513	2226	NONE	sd	Khartoum
+DJI	Djibouti	Africa	973560	3324	2360	NONE	dj	Djibouti
+ERI	Eritrea	Africa	6081196	2065	2183	NONE	er	Asmara
+AUT	Austria	Europe	8877067	445075	902	NONE	at	Vienna
+IRQ	Iraq	Asia	39309783	234094	1508	NONE	iq	Baghdad
+ITA	Italy	Europe	60297396	2003576	1115	NATO	it	Rome
+CHE	Switzerland	Europe	8574832	703082	955	NONE	ch	Bern
+IRN	Iran	Asia	82913906	453996	1458	NONE	ir	Tehran
+LIE	Liechtenstein	Europe	38019	6876	976	NONE	li	Vaduz
+CIV	Ivory Coast	Africa	25716544	58539	2509	NONE	ci	Yamoussoukro
 SRB	Republic of Serbia	Europe	6944975	51475	1026	NONE	rs	Belgrade
-MLI	Mali	Africa	19658031	17279	2195	NONE	ml	Bamako
-SEN	Senegal	Africa	16296364	23578	2199	NONE	sn	Dakar
-NGA	Nigeria	Africa	200963599	448120	2540	NONE	ng	Abuja
-BEN	Benin	Africa	11801151	14390	2654	NONE	bj	Cotonou
-AGO	Angola	Africa	31825295	88815	3079	NONE	ao	Luanda
-HRV	Croatia	Europe	4067500	60752	929	NATO	hr	Zagreb
-SVN	Slovenia	Europe	2087946	54174	912	NATO	si	Ljubljana
+MLI	Mali	Africa	19658031	17279	2322	NONE	ml	Bamako
+SEN	Senegal	Africa	16296364	23578	2271	NONE	sn	Dakar
+NGA	Nigeria	Africa	200963599	448120	2465	NONE	ng	Abuja
+BEN	Benin	Africa	11801151	14390	2445	NONE	bj	Cotonou
+AGO	Angola	Africa	31825295	88815	2938	NONE	ao	Luanda
+HRV	Croatia	Europe	4067500	60752	1015	NATO	hr	Zagreb
+SVN	Slovenia	Europe	2087946	54174	994	NATO	si	Ljubljana
 QAT	Qatar	Asia	2832067	175837	1887	NONE	qa	Doha
-SAU	Saudi Arabia	Asia	34268528	792966	1862	NONE	sa	Riyadh
-BWA	Botswana	Africa	2303697	18340	3300	NONE	bw	Gaborone
-ZWE	Zimbabwe	Africa	14645468	21440	3212	NONE	zw	Harare
-PAK	Pakistan	Asia	216565318	278221	1679	NONE	pk	Islamabad
-BGR	Bulgaria	Europe	6975761	68558	1136	NATO	bg	Sofia
-THA	Thailand	Asia	69625582	543548	2223	NONE	th	Bangkok
-SMR	San Marino	Europe	33860	1655	1070	NONE	sm	San Marino
-HTI	Haiti	North America	11263077	14332	2056	NONE	ht	Port-au-Prince
-DOM	Dominican Republic	North America	10738958	88941	2053	NONE	do	Santo Domingo
-TCD	Chad	Africa	15946876	11314	2368	NONE	td	N'Djamena
-KWT	Kuwait	Asia	4207083	134628	1809	NONE	kw	Kuwait City
-SLV	El Salvador	North America	6453553	27022	2248	NONE	sv	San Salvador
-GTM	Guatemala	North America	16604026	76710	2226	NONE	gt	Guatemala City
-TLS	East Timor	Asia	1293119	2017	3069	NONE	tl	Dili
-BRN	Brunei	Asia	433285	13469	2738	NONE	bn	Bandar Seri Begawan
-MCO	Monaco	Europe	38964	7188	1087	NONE	mc	Monaco
-DZA	Algeria	Africa	43053054	171091	1524	NONE	dz	Algiers
-MOZ	Mozambique	Africa	30366036	15291	3307	NONE	mz	Maputo
-SWZ	eSwatini	Africa	1148130	4471	3326	NONE	sz	Mbabane
-BDI	Burundi	Africa	11530580	3012	2937	NONE	bi	Bujumbura
-RWA	Rwanda	Africa	12626950	10354	2900	NONE	rw	Kigali
-MMR	Myanmar	Asia	54045420	76085	1930	NONE	mm	Naypyidaw
-BGD	Bangladesh	Asia	163046161	302571	1895	NONE	bd	Dhaka
-AND	Andorra	Europe	77142	3154	1163	NONE	ad	Andorra
-AFG	Afghanistan	Asia	38041754	19291	1642	NONE	af	Kabul
-MNE	Montenegro	Europe	622137	5542	1115	NATO	me	Podgorica
-BIH	Bosnia and Herzegovina	Europe	3301000	20164	1044	NONE	ba	Sarajevo
-UGA	Uganda	Africa	44269594	35165	2836	NONE	ug	Kampala
-CUB	Cuba	North America	11339483	100263	1939	NONE	cu	Havana
-HND	Honduras	North America	9746117	25095	2219	NONE	hn	Tegucigalpa
-ECU	Ecuador	South America	17373662	107435	2846	NONE	ec	Quito
-COL	Colombia	South America	50339443	323615	2710	NONE	co	Bogota
-PRY	Paraguay	South America	7044636	38145	3285	NONE	py	Asunción
-PRT	Portugal	Europe	10269417	238785	1389	NATO	pt	Lisbon
-MDA	Moldova	Europe	2657637	11968	824	NONE	md	Chișinău
-TKM	Turkmenistan	Asia	5942089	40761	1340	NONE	tm	Ashgabat
-JOR	Jordan	Asia	10101694	44502	1746	NONE	jo	Amman
-NPL	Nepal	Asia	28608710	30641	1835	NONE	np	Kathmandu
-LSO	Lesotho	Africa	2125268	2376	3356	NONE	ls	Maseru
-CMR	Cameroon	Africa	25876380	39007	2690	NONE	cm	Yaoundé
-GAB	Gabon	Africa	2172579	16874	2829	NONE	ga	Libreville
-NER	Niger	Africa	23310715	12911	2187	NONE	ne	Niamey
-BFA	Burkina Faso	Africa	20321378	15990	2355	NONE	bf	Ouagadougou
-TGO	Togo	Africa	8082366	5490	2657	NONE	tg	Lomé
-GHA	Ghana	Africa	30417856	66983	2705	NONE	gh	Accra
-GNB	Guinea-Bissau	Africa	1920922	1339	2354	NONE	gw	Bissau
-USA	United States of America	North America	331819970	21549948	1362	NATO	us	Washington,  D.C.
-CAN	Canada	North America	37589262	1736425	828	NATO	ca	Ottawa
-MEX	Mexico	North America	127575529	1268870	2024	NONE	mx	Mexico City
-BLZ	Belize	North America	390353	1879	2114	NONE	bz	Belmopan
-PAN	Panama	North America	4246439	66800	2534	NONE	pa	Panama City
-VEN	Venezuela	South America	28515829	482359	2479	NONE	ve	Caracas
-PNG	Papua New Guinea	Oceania	8776109	24829	3049	NONE	pg	Port Moresby
-EGY	Egypt	Africa	100388073	303092	1782	NONE	eg	Cairo
-YEM	Yemen	Asia	29161922	22581	2168	NONE	ye	Sanaa
-MRT	Mauritania	Africa	4525696	7600	2059	NONE	mr	Nouakchott
-GNQ	Equatorial Guinea	Africa	1355986	11026	2763	NONE	gq	Malabo
-GMB	Gambia	Africa	2347706	1826	2277	NONE	gm	Banjul
-VAT	Vatican	Europe	825	-99	1203	NONE	va	Vatican City
-CYN	Northern Cyprus	Asia	326000	3600	1598	NONE		
-CNM	Cyprus No Mans Area	Asia	10000	280	1617	NONE		
-KAS	Kashmir	Asia	6000	15	1600	NONE		
-AUS	Australia	Oceania	25368867	1396634	3397	PACIFIC	au	Canberra
-FJI	Fiji	Oceania	889953	5496	3230	NONE	fj	Suva
-NZL	New Zealand	Oceania	4936079	207182	3420	PACIFIC	nz	Wellington
-MDG	Madagascar	Africa	26969307	14114	3236	NONE	mg	Antananarivo
-PHL	Philippines	Asia	108116615	376795	2213	NONE	ph	Manila
-LKA	Sri Lanka	Asia	21803000	84008	2636	NONE	lk	Colombo
-BHS	The Bahamas	North America	389482	13578	1899	NONE	bs	Nassau
-TWN	Taiwan	Asia	23568378	1127000	1898	NONE	tw	Taipei
-JPN	Japan	Asia	126264931	5081769	1559	PACIFIC	jp	Tokyo
-ISL	Iceland	Europe	361313	24188	293	NATO	is	Reykjavík
-KIR	Kiribati	Oceania	117606	194	2803	NONE	ki	
-MHL	Marshall Islands	Oceania	58791	221	2642	NONE	mh	Majuro
-TTO	Trinidad and Tobago	North America	1394973	24269	2468	NONE	tt	Port-of-Spain
-GRD	Grenada	North America	112003	1210	2376	NONE	gd	Saint George's
-VCT	Saint Vincent and the Grenadines	North America	110589	824	2305	NONE	vc	Kingstown
-LCA	Saint Lucia	North America	182790	2122	2264	NONE	lc	Castries
-DMA	Dominica	North America	71808	582	2191	NONE	dm	Roseau
-ATG	Antigua and Barbuda	North America	97118	1661	2105	NONE	ag	Saint John's
-KNA	Saint Kitts and Nevis	North America	52834	1053	2111	NONE	kn	Basseterre
-JAM	Jamaica	North America	2948279	16458	2076	NONE	jm	Kingston
-COM	Comoros	Africa	850886	1165	3127	NONE	km	Moroni
-STP	São Tomé and Principe	Africa	215056	418	2844	NONE	st	São Tomé
-CPV	Cabo Verde	Africa	549935	1981	2205	NONE	cv	Praia
-MLT	Malta	Europe	502653	14989	1565	NONE	mt	Valletta
-SGP	Singapore	Asia	5703569	372062	2812	NONE	sg	Singapore
-TON	Tonga	Oceania	104494	512	3276	NONE	to	Nuku'alofa
-WSM	Samoa	Oceania	197097	852	3170	NONE	ws	Apia
-SLB	Solomon Islands	Oceania	669823	1589	3091	NONE	sb	Honiara
-TUV	Tuvalu	Oceania	11646	47	3072	NONE	tv	Funafuti
-NRU	Nauru	Oceania	12581	118	2880	NONE	nr	
-FSM	Federated States of Micronesia	Oceania	113815	401	2652	NONE	fm	Palikir
-VUT	Vanuatu	Oceania	299882	934	3229	NONE	vu	Port Vila
-PLW	Palau	Oceania	18008	268	2624	NONE	pw	Melekeok
-BHR	Bahrain	Asia	1641172	38574	1884	NONE	bh	Manama
-PGA	Spratly Islands	Asia	100	0	2467	NONE		
+SAU	Saudi Arabia	Asia	34268528	792966	1930	NONE	sa	Riyadh
+BWA	Botswana	Africa	2303697	18340	3347	NONE	bw	Gaborone
+ZWE	Zimbabwe	Africa	14645468	21440	3184	NONE	zw	Harare
+PAK	Pakistan	Asia	216565318	278221	1557	NONE	pk	Islamabad
+BGR	Bulgaria	Europe	6975761	68558	1107	NATO	bg	Sofia
+THA	Thailand	Asia	69625582	543548	2291	NONE	th	Bangkok
+SMR	San Marino	Europe	33860	1655	1114	NONE	sm	San Marino
+HTI	Haiti	North America	11263077	14332	2106	NONE	ht	Port-au-Prince
+DOM	Dominican Republic	North America	10738958	88941	2121	NONE	do	Santo Domingo
+TCD	Chad	Africa	15946876	11314	2370	NONE	td	N'Djamena
+KWT	Kuwait	Asia	4207083	134628	1712	NONE	kw	Kuwait City
+SLV	El Salvador	North America	6453553	27022	2304	NONE	sv	San Salvador
+GTM	Guatemala	North America	16604026	76710	2270	NONE	gt	Guatemala City
+TLS	East Timor	Asia	1293119	2017	2955	NONE	tl	Dili
+BRN	Brunei	Asia	433285	13469	2594	NONE	bn	Bandar Seri Begawan
+MCO	Monaco	Europe	38964	7188	1121	NONE	mc	Monaco
+DZA	Algeria	Africa	43053054	171091	1431	NONE	dz	Algiers
+MOZ	Mozambique	Africa	30366036	15291	3379	NONE	mz	Maputo
+SWZ	eSwatini	Africa	1148130	4471	3413	NONE	sz	Mbabane
+BDI	Burundi	Africa	11530580	3012	2802	NONE	bi	Bujumbura
+RWA	Rwanda	Africa	12626950	10354	2762	NONE	rw	Kigali
+MMR	Myanmar	Asia	54045420	76085	1979	NONE	mm	Naypyidaw
+BGD	Bangladesh	Asia	163046161	302571	1914	NONE	bd	Dhaka
+AND	Andorra	Europe	77142	3154	1171	NONE	ad	Andorra
+AFG	Afghanistan	Asia	38041754	19291	1466	NONE	af	Kabul
+MNE	Montenegro	Europe	622137	5542	1138	NATO	me	Podgorica
+BIH	Bosnia and Herzegovina	Europe	3301000	20164	1065	NONE	ba	Sarajevo
+UGA	Uganda	Africa	44269594	35165	2677	NONE	ug	Kampala
+CUB	Cuba	North America	11339483	100263	1999	NONE	cu	Havana
+HND	Honduras	North America	9746117	25095	2283	NONE	hn	Tegucigalpa
+ECU	Ecuador	South America	17373662	107435	2693	NONE	ec	Quito
+COL	Colombia	South America	50339443	323615	2575	NONE	co	Bogota
+PRY	Paraguay	South America	7044636	38145	3352	NONE	py	Asunción
+PRT	Portugal	Europe	10269417	238785	1195	NATO	pt	Lisbon
+MDA	Moldova	Europe	2657637	11968	919	NONE	md	Chișinău
+TKM	Turkmenistan	Asia	5942089	40761	1280	NONE	tm	Ashgabat
+JOR	Jordan	Asia	10101694	44502	1632	NONE	jo	Amman
+NPL	Nepal	Asia	28608710	30641	1751	NONE	np	Kathmandu
+LSO	Lesotho	Africa	2125268	2376	3474	NONE	ls	Maseru
+CMR	Cameroon	Africa	25876380	39007	2590	NONE	cm	Yaoundé
+GAB	Gabon	Africa	2172579	16874	2697	NONE	ga	Libreville
+NER	Niger	Africa	23310715	12911	2286	NONE	ne	Niamey
+BFA	Burkina Faso	Africa	20321378	15990	2350	NONE	bf	Ouagadougou
+TGO	Togo	Africa	8082366	5490	2494	NONE	tg	Lomé
+GHA	Ghana	Africa	30417856	66983	2533	NONE	gh	Accra
+GNB	Guinea-Bissau	Africa	1920922	1339	2357	NONE	gw	Bissau
+USA	United States of America	North America	331819970	21549948	1293	NATO	us	Washington,  D.C.
+CAN	Canada	North America	37589262	1736425	1041	NATO	ca	Ottawa
+MEX	Mexico	North America	127575529	1268870	2100	NONE	mx	Mexico City
+BLZ	Belize	North America	390353	1879	2163	NONE	bz	Belmopan
+PAN	Panama	North America	4246439	66800	2457	NONE	pa	Panama City
+VEN	Venezuela	South America	28515829	482359	2388	NONE	ve	Caracas
+PNG	Papua New Guinea	Oceania	8776109	24829	2941	NONE	pg	Port Moresby
+EGY	Egypt	Africa	100388073	303092	1703	NONE	eg	Cairo
+YEM	Yemen	Asia	29161922	22581	2247	NONE	ye	Sanaa
+MRT	Mauritania	Africa	4525696	7600	2155	NONE	mr	Nouakchott
+GNQ	Equatorial Guinea	Africa	1355986	11026	2627	NONE	gq	Malabo
+GMB	Gambia	Africa	2347706	1826	2317	NONE	gm	Banjul
+VAT	Vatican	Europe	825	-99	1197	NONE	va	Vatican City
+CYN	Northern Cyprus	Asia	326000	3600	1481	NONE		
+CNM	Cyprus No Mans Area	Asia	10000	280	1498	NONE		
+KAS	Kashmir	Asia	6000	15	1483	NONE		
+AUS	Australia	Oceania	25368867	1396634	3560	PACIFIC	au	Canberra
+FJI	Fiji	Oceania	889953	5496	3069	NONE	fj	Suva
+NZL	New Zealand	Oceania	4936079	207182	3582	PACIFIC	nz	Wellington
+MDG	Madagascar	Africa	26969307	14114	3219	NONE	mg	Antananarivo
+PHL	Philippines	Asia	108116615	376795	2234	NONE	ph	Manila
+LKA	Sri Lanka	Asia	21803000	84008	2453	NONE	lk	Colombo
+BHS	The Bahamas	North America	389482	13578	1917	NONE	bs	Nassau
+TWN	Taiwan	Asia	23568378	1127000	1916	NONE	tw	Taipei
+JPN	Japan	Asia	126264931	5081769	1429	PACIFIC	jp	Tokyo
+ISL	Iceland	Europe	361313	24188	299	NATO	is	Reykjavík
+KIR	Kiribati	Oceania	117606	194	2669	NONE	ki	
+MHL	Marshall Islands	Oceania	58791	221	2529	NONE	mh	Majuro
+TTO	Trinidad and Tobago	North America	1394973	24269	2421	NONE	tt	Port-of-Spain
+GRD	Grenada	North America	112003	1210	2373	NONE	gd	Saint George's
+VCT	Saint Vincent and the Grenadines	North America	110589	824	2336	NONE	vc	Kingstown
+BRB	Barbados	North America	287025	5209	2337	NONE	bb	Bridgetown
+LCA	Saint Lucia	North America	182790	2122	2310	NONE	lc	Castries
+DMA	Dominica	North America	71808	582	2260	NONE	dm	Roseau
+ATG	Antigua and Barbuda	North America	97118	1661	2204	NONE	ag	Saint John's
+KNA	Saint Kitts and Nevis	North America	52834	1053	2198	NONE	kn	Basseterre
+JAM	Jamaica	North America	2948279	16458	2164	NONE	jm	Kingston
+COM	Comoros	Africa	850886	1165	3040	NONE	km	Moroni
+STP	São Tomé and Principe	Africa	215056	418	2714	NONE	st	São Tomé
+CPV	Cabo Verde	Africa	549935	1981	2276	NONE	cv	Praia
+MLT	Malta	Europe	502653	14989	1464	NONE	mt	Valletta
+SGP	Singapore	Asia	5703569	372062	2680	NONE	sg	Singapore
+TON	Tonga	Oceania	104494	512	3303	NONE	to	Nuku'alofa
+WSM	Samoa	Oceania	197097	852	3102	NONE	ws	Apia
+SLB	Solomon Islands	Oceania	669823	1589	2984	NONE	sb	Honiara
+TUV	Tuvalu	Oceania	11646	47	2962	NONE	tv	Funafuti
+NRU	Nauru	Oceania	12581	118	2738	NONE	nr	
+FSM	Federated States of Micronesia	Oceania	113815	401	2540	NONE	fm	Palikir
+VUT	Vanuatu	Oceania	299882	934	3215	NONE	vu	Port Vila
+PLW	Palau	Oceania	18008	268	2523	NONE	pw	Melekeok
+BHR	Bahrain	Asia	1641172	38574	1883	NONE	bh	Manama
+PGA	Spratly Islands	Asia	100	0	2420	NONE		

@@ -474,4 +474,111 @@ class GameTest {
         for (int d = 0; d < 35; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
         assertTrue(gs.ns[a].budget().military > 0.1 && gs.ns[a].budget().tax > 0.35, "wartime stance: tax " + gs.ns[a].budget().tax);
     }
+
+    // ------------------------------------------------------------------ diplomacy realism
+    @Test
+    void refusedPeaceOffersDoNotSpamThePlayer() {
+        GameState gs = game("UKR");
+        int me = gs.player, foe = world.nationByTag.get("RUS");
+        gs.war[me][foe] = gs.war[foe][me] = true;
+        gs.ns[me].lastWarDay = gs.ns[foe].lastWarDay = 0;
+        gs.ns[foe].warWeariness = 90; gs.ns[foe].stability = 20;
+        int offers = 0, total = 0;
+        java.util.List<Integer> days = new java.util.ArrayList<>();
+        for (int d = 0; d < 240; d++) {
+            gs.advanceDay();
+            gs.ns[foe].warWeariness = 90;
+            for (GameEvent ev : new java.util.ArrayList<>(gs.pendingEvents)) {
+                if (ev.id.startsWith("peace:")) { offers++; days.add(gs.day); gs.answerEvent(ev, 1); }
+                else gs.pendingEvents.remove(ev);
+            }
+            gs.pauseRequested = false;
+        }
+        System.out.println("peace offers to the player in 240 days (always refused): " + offers + " on days " + days);
+        assertTrue(offers >= 1, "they do ask at least once");
+        assertTrue(offers <= 4, "but not constantly: " + offers);
+        for (int i = 1; i < days.size(); i++) assertTrue(days.get(i) - days.get(i - 1) >= 20, "offers are at least 20 days apart");
+    }
+
+    @Test
+    void alliancesAreEarnedNotGranted() {
+        GameState gs = game("FRA");
+        int me = gs.player;
+        int accepted = 0, tried = 0;
+        for (int n = 0; n < gs.N; n++) {
+            if (n == me || gs.isAlly(me, n) || !gs.ns[n].alive) continue;
+            tried++;
+            GameState.Result r = gs.formAlliance(me, n);
+            if (r.ok) accepted++;
+        }
+        System.out.println("France asked " + tried + " nations for an alliance, " + accepted + " accepted");
+        assertTrue(accepted < tried * 0.15, "most refuse: " + accepted + "/" + tried);
+        // ...but friendship can be earned: a stranger who receives gifts eventually says yes
+        GameState earn = game("FRA");
+        int stranger = world.nationByTag.get("BRA");
+        assertFalse(earn.formAlliance(earn.player, stranger).ok);
+        earn.allianceCooldown[earn.player][stranger] = earn.allianceCooldown[stranger][earn.player] = 0;
+        earn.ns[earn.player].money = 5000;
+        for (int i = 0; i < 6; i++) earn.sendAid(earn.player, stranger, 60);
+        earn.ns[stranger].stability = 60;
+        GameState.Result earned = earn.formAlliance(earn.player, stranger);
+        assertTrue(earned.ok, "after generous aid: " + earned.message);
+        // a close partner with shared history says yes; the refusal of a stranger carries a reason and a cooldown
+        GameState g2 = game("USA");
+        int jpn = world.nationByTag.get("JPN");
+        GameState.Result yes = g2.formAlliance(g2.player, jpn);
+        assertTrue(yes.ok, yes.message);
+        int ind = world.nationByTag.get("PNG");
+        GameState.Result no = g2.formAlliance(g2.player, ind);
+        assertFalse(no.ok);
+        assertTrue(no.message.contains("score") && no.message.contains("opinion"), no.message);
+        assertFalse(g2.formAlliance(g2.player, ind).ok);
+        assertTrue(g2.formAlliance(g2.player, ind).message.contains("recently turned you down"));
+    }
+
+    @Test
+    void aggressionWinsEnemiesAndAidWinsFriends() {
+        GameState gs = game("FRA");
+        int me = gs.player, brz = world.nationByTag.get("BRA"), arg = world.nationByTag.get("ARG");
+        double before = gs.opinion[brz][me];
+        gs.sendAid(me, brz, 40);
+        assertTrue(gs.opinion[brz][me] > before + 5, "gifts improve opinion");
+        double argBefore = gs.opinion[arg][me];
+        int victim = world.nationByTag.get("PNG");
+        gs.declareWar(me, victim);
+        assertTrue(gs.opinion[victim][me] < -50, "the victim hates the aggressor");
+        assertTrue(gs.opinion[arg][me] < argBefore, "bystanders think less of an aggressor");
+        for (int d = 0; d < 400; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        assertTrue(gs.opinion[brz][me] < before + 40 && gs.opinion[brz][me] >= -100, "opinion stays bounded and drifts back");
+    }
+
+    @Test
+    void governmentsApprovalAndElections() {
+        GameState gs = game("USA");
+        assertEquals(Government.DEMOCRACY, gs.ns[gs.player].gov);
+        assertEquals(Government.AUTOCRACY, gs.ns[world.nationByTag.get("RUS")].gov);
+        assertEquals(Government.ONE_PARTY, gs.ns[world.nationByTag.get("CHN")].gov);
+        assertEquals(Government.THEOCRACY, gs.ns[world.nationByTag.get("IRN")].gov);
+        double[] calm = Politics.target(gs.ns[gs.player], false);
+        gs.ns[gs.player].budget().tax = 0.65; gs.ns[gs.player].budget().welfare = 0;
+        double[] angry = Politics.target(gs.ns[gs.player], false);
+        assertTrue(angry[1] < calm[1] - 20, "business hates high taxes");
+        assertTrue(angry[2] < calm[2] - 20, "workers hate cuts to welfare");
+        gs.ns[gs.player].budget().military = 0.35; gs.ns[gs.player].budget().tax = 0.30; gs.ns[gs.player].budget().welfare = 0.08;
+        assertTrue(Politics.target(gs.ns[gs.player], true)[0] > calm[0] + 40, "the army loves funding");
+        // an election is held and rescheduled
+        gs.ns[gs.player].nextElection = gs.day + 2;
+        gs.ns[gs.player].approval = new double[]{80, 80, 80, 80};
+        gs.advanceDay(); gs.advanceDay(); gs.advanceDay();
+        assertTrue(gs.ns[gs.player].nextElection > gs.day + 1000, "next election in about four years");
+        // a lost election gives the player a choice
+        gs.ns[gs.player].nextElection = gs.day + 1;
+        gs.ns[gs.player].approval = new double[]{5, 5, 5, 5};
+        gs.ns[gs.player].stability = 5;
+        for (int i = 0; i < 4 && gs.pendingEvents.stream().noneMatch(e -> e.id.equals("election")); i++) { gs.ns[gs.player].approval = new double[]{5, 5, 5, 5}; gs.advanceDay(); }
+        GameEvent el = gs.pendingEvents.stream().filter(e -> e.id.equals("election")).findFirst().orElse(null);
+        assertNotNull(el, "lost election raises a decision");
+        gs.answerEvent(el, 1);
+        assertEquals(Government.AUTOCRACY, gs.ns[gs.player].gov, "contesting the result makes you an autocracy");
+    }
 }

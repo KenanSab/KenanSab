@@ -13,8 +13,24 @@ public final class Ai {
         if (!s.alive) return;
         boolean war = gs.atWarAny(n);
         if (gs.day % 12 == n % 12 && !war) considerWar(gs, n);
+        if (gs.day % 45 == n % 45) considerAlliance(gs, n);
         if (war) { manageArmies(gs, n); considerPeace(gs, n); }
         economy(gs, n, war);
+    }
+
+    /** AI nations pair up only with partners they genuinely like: high opinion plus an acceptable verdict. */
+    static void considerAlliance(GameState gs, int n) {
+        if (gs.directAlliances(n) >= 3) return;
+        int best = -1; double bo = 70;
+        for (int m = 0; m < gs.N; m++) {
+            if (m == n || !gs.ns[m].alive || gs.isAlly(n, m) || gs.war[n][m] || m == gs.player) continue;
+            if (gs.opinion[n][m] > bo && gs.opinion[m][n] > 60 && gs.day >= gs.allianceCooldown[n][m]) { bo = gs.opinion[n][m]; best = m; }
+        }
+        if (best >= 0 && Relations.allianceVerdict(gs, n, best).accept()) {
+            gs.ally[n][best] = gs.ally[best][n] = true;
+            Relations.both(gs, n, best, 6);
+            if (gs.intelOf(gs.player).quality[gs.world.nations.get(n).capital] > 0 || gs.rng.nextDouble() < 0.5) gs.news(gs.nationName(n) + " and " + gs.nationName(best) + " sign an alliance.");
+        }
     }
 
     static void considerWar(GameState gs, int n) {
@@ -95,14 +111,18 @@ public final class Ai {
             double mine = Math.max(1, gs.nationHp(n)), theirs = Math.max(1, Vision.estimateStrength(gs, n, e));
             double lost = 1 - gs.ownedProvinces(n) / (double) Math.max(1, gs.world.nations.get(n).provinces.size());
             boolean wantPeace = mine < theirs * 0.6 || lost > 0.2 || gs.ns[n].warWeariness > 55 || gs.ns[n].stability < 30 || gs.day - gs.ns[n].lastWarDay > 160;
-            if (!wantPeace) continue;
+            if (!wantPeace || gs.day < gs.peaceCooldown[n][e]) continue;
             if (e == gs.player) {
                 boolean pending = false;
-                for (GameEvent ev : gs.pendingEvents) if (ev.id.equals("peace:" + n)) pending = true;
-                if (!pending && gs.rng.nextDouble() < 0.3)
+                for (GameEvent ev : gs.pendingEvents) if (ev.id.startsWith("peace:")) pending = true;
+                // at most one offer to the player every 20 days in total, and the same country never twice within 120 days
+                if (!pending && gs.day - gs.lastPeaceOfferDay >= 20 && gs.rng.nextDouble() < 0.3) {
+                    gs.lastPeaceOfferDay = gs.day;
+                    gs.peaceCooldown[n][e] = gs.peaceCooldown[e][n] = gs.day + 120;
                     Events.post(gs, new GameEvent("peace:" + n, gs.player, gs.nationName(n) + " proposes peace",
                             gs.nationName(n) + " is tired of the war and offers a ceasefire on current lines.", List.of("Accept peace", "Refuse")));
-            } else if (e != n) gs.offerPeace(n, e);
+                }
+            } else if (e != n) { gs.peaceCooldown[n][e] = gs.peaceCooldown[e][n] = gs.day + 30; gs.offerPeace(n, e); }
         }
     }
 

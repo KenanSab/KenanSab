@@ -50,7 +50,12 @@ public final class Events {
         switch (id) {
             case "peace" -> {
                 int other = Integer.parseInt(ev.id.substring(6));
-                if (opt == 0 && gs.war[ev.nation][other]) { gs.makePeace(ev.nation, other); msg = "Peace signed."; } else msg = "Offer refused.";
+                if (opt == 0 && gs.war[ev.nation][other]) { gs.makePeace(ev.nation, other); msg = "Peace signed."; }
+                else { gs.peaceCooldown[ev.nation][other] = gs.peaceCooldown[other][ev.nation] = gs.day + 150; msg = "Offer refused. They will not ask again for a while."; }
+            }
+            case "election" -> {
+                if (opt == 0) { s.stability -= 3; s.budget = new Budget(); msg = "The new government takes office with its own priorities."; }
+                else { s.stability -= 10; s.gov = Government.AUTOCRACY; s.nextElection = Integer.MAX_VALUE; msg = "You cling to power. " + gs.nationName(ev.nation) + " is now an autocracy."; }
             }
             case "border" -> {
                 switch (opt) {

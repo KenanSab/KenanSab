@@ -39,6 +39,9 @@ public final class NationState implements Serializable {
     public final Map<Integer, Double> agents = new HashMap<>();   // target nation -> intel network level 0..100
     public double lastIncome, lastOilDelta;
     // economy
+    public Government gov = Government.REPUBLIC;
+    public double[] approval = {50, 50, 50, 50};
+    public int nextElection;
     public Budget budget = new Budget();
     public double gdpIndex = 1.0, infraIndex = 0.2, inflation;
     public Budget.Ledger ledger;
