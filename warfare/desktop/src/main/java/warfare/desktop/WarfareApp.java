@@ -20,10 +20,11 @@ public final class WarfareApp {
 
     public static void main(String[] args) throws Exception {
         assets = findAssets(args);
+        Fonts.load(assets);
+        theme();
         if (args.length >= 2 && args[0].equals("--shot")) { System.setProperty("java.awt.headless", "true"); shot(args); return; }
         WorldData world = WorldData.load(assets);
         SwingUtilities.invokeLater(() -> {
-            try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
             JFrame f = new JFrame("Warfare");
             f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             f.setSize(1500, 900);
@@ -50,6 +51,16 @@ public final class WarfareApp {
             System.exit(0);
         });
         t.setRepeats(false); t.start();
+    }
+
+    static void theme() {
+        com.formdev.flatlaf.FlatDarkLaf.setup();
+        UIManager.put("defaultFont", Fonts.ui(13f));
+        UIManager.put("Component.arc", 8);
+        UIManager.put("Button.arc", 8);
+        UIManager.put("TabbedPane.selectedBackground", new java.awt.Color(38, 50, 72));
+        UIManager.put("Panel.background", new java.awt.Color(20, 26, 38));
+        UIManager.put("Component.focusColor", new java.awt.Color(120, 170, 240));
     }
 
     static Path findAssets(String[] args) {

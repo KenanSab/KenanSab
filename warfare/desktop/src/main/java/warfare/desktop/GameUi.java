@@ -30,7 +30,7 @@ final class GameUi extends JPanel {
     GameUi(GameState gs, JFrame frame) {
         super(new BorderLayout());
         this.gs = gs; this.frame = frame;
-        map = new MapPanel(gs);
+        map = new MapPanel(gs, WarfareApp.assets);
         Runnable refresh = this::refresh;
         selection = new SidePanels.Selection(gs, map, refresh);
         production = new SidePanels.Production(gs, map, refresh);

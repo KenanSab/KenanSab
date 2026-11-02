@@ -9,7 +9,7 @@ Start date 1 November 2026. Real-time with pause. Sandbox (no fixed end).
 |---|---|
 | Platform / engine | Steam release is the goal. Java 21 (the user reports Age of History 3 used a custom Java engine; that engine is proprietary, so this project has its own). Simulation is renderer-independent (`core`), the Swing client (`desktop`) is replaceable by LWJGL/libGDX for Steam. |
 | Setting | Modern day / near future, all ~190 countries playable (197 sovereign nations on the map). |
-| Map | Provinces on a real-world map: 3,700+ land provinces and ~270 sea zones, generated from Natural Earth borders (`tools`). Satellite imagery was unreachable offline, so terrain is a latitude/region approximation. |
+| Map | Provinces on a real-world map: 3,400+ land provinces built from real administrative regions (Natural Earth 10m admin-1; oversized regions split, tiny ones merged) and ~270 sea zones, with smooth vector borders (`tools`). Satellite imagery was unreachable offline, so terrain is a latitude/region approximation. |
 | Time | Real-time with pause, 5 speeds (Space pause, keys 1-5). |
 | Players | Single-player vs AI first. |
 | Fog of war | Classic vision radius, plus: hides unit location, strength and type, province ownership and buildings, and secret alliances. Vision from units, provinces, recon/aircraft, radar, satellites (tech), agents, allied sharing. Old intel **fades over time**. Province-based flat shading. |
@@ -38,3 +38,10 @@ cd warfare
 ./gradlew :desktop:run --args="--shot out.png RUS 40 UKR INTEL"   # headless screenshot
 ./gradlew :tools:run --args="countries.geojson assets/map 2900 260"   # regenerate the map
 ```
+
+## Visuals
+
+Provinces are drawn as antialiased vector shapes (traced, simplified and Chaikin-smoothed border arcs) over a procedural
+satellite-style underlay (blended terrain colours, noise hillshade, coastal ocean depth). Fonts are Barlow / Barlow
+Condensed / Bebas Neue (SIL OFL, `assets/fonts`); UI theme is FlatLaf (Apache 2.0). Real satellite imagery was not
+reachable from the build environment, so relief is procedural.

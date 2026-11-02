@@ -23,7 +23,7 @@ final class SidePanels {
     }
 
     static String esc(String s) { return s.replace("&", "&amp;").replace("<", "&lt;"); }
-    static String doc(String body) { return "<html><body style='font-family:sans-serif;font-size:11px;color:#e6ebf2'>" + body + "</body></html>"; }
+    static String doc(String body) { return "<html><body style='font-family:\""+Fonts.uiFamily()+"\",sans-serif;font-size:12px;color:#e6ebf2'>" + body + "</body></html>"; }
 
     static void message(Component c, GameState.Result r) {
         if (r == null) return;

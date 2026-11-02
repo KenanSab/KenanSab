@@ -4,5 +4,5 @@ A modern-day grand strategy game with deep fog of war and tactic-card battles. S
 
 - `core/` - engine-independent simulation (Java 21, no dependencies)
 - `desktop/` - Swing client
-- `tools/` - map generator (Natural Earth borders -> 3,700+ provinces)
+- `tools/` - map generator (Natural Earth admin-1 regions -> 3,400+ provinces + smooth vector borders)
 - `assets/map/` - generated province map

@@ -8,8 +8,9 @@ final class NationColors {
     static Color of(String tag) {
         int h = Math.abs((tag + "x").hashCode());
         float hue = (h % 360) / 360f;
-        float sat = 0.42f + ((h / 360) % 30) / 100f;
-        return Color.getHSBColor(hue, sat, 0.86f);
+        float sat = 0.34f + ((h / 360) % 26) / 100f;
+        float val = 0.74f + ((h / 9000) % 12) / 100f;
+        return Color.getHSBColor(hue, sat, val);
     }
 
     static int rgb(Color c) { return c.getRGB() & 0xFFFFFF; }
