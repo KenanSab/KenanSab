@@ -25,9 +25,7 @@ final class ProductionPanel extends JPanel {
     ProductionPanel(GameState gs, MapPanel map, Runnable refreshAll) {
         super(new BorderLayout());
         this.gs = gs; this.map = map; this.refreshAll = refreshAll;
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(Ui.PANEL);
+        JPanel content = new Ui.ScrollColumn();
         content.setBorder(BorderFactory.createEmptyBorder(10, 12, 12, 12));
 
         content.add(Ui.section("Recruit forces"));
@@ -95,6 +93,7 @@ final class ProductionPanel extends JPanel {
         content.add(dynamic);
         JScrollPane sp = new JScrollPane(content);
         sp.setBorder(null);
+        sp.getViewport().setBackground(Ui.PANEL);
         sp.getVerticalScrollBar().setUnitIncrement(18);
         add(sp, BorderLayout.CENTER);
         sum();

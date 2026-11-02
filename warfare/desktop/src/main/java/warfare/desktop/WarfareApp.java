@@ -27,6 +27,15 @@ public final class WarfareApp {
         Steam.init();
         theme();
         if (args.length >= 2 && args[0].equals("--export-audio")) { exportAudio(args[1]); return; }
+        if (args.length >= 2 && args[0].equals("--basemap")) {
+            System.setProperty("java.awt.headless", "true");
+            WorldData world = WorldData.load(assets);
+            MapShapes shapes = MapShapes.load(assets.resolve("arcs.bin.gz"), world.provinces.size());
+            Basemap b = new Basemap(shapes, world);
+            ImageIO.write(b.image, "png", new File(args[1]));
+            System.out.println("wrote " + args[1] + " " + b.image.getWidth() + "x" + b.image.getHeight());
+            return;
+        }
         if (args.length >= 2 && args[0].equals("--picker")) { picker(args[1]); return; }
         if (args.length >= 2 && args[0].equals("--shot")) { System.setProperty("java.awt.headless", "true"); shot(args); return; }
         WorldData world = WorldData.load(assets);
@@ -40,19 +49,39 @@ public final class WarfareApp {
             for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
             start(f, world, forced != null ? new NationPicker.Choice(world.nationByTag.get(forced), false) : chooseNation(f, world));
             f.setVisible(true);
-            for (String a : args) if (a.equals("--smoke")) smoke(f);
+            for (int i = 0; i < args.length; i++) if (args[i].equals("--smoke")) smoke(f, i + 1 < args.length && args[i + 1].matches("\\d+") ? Integer.parseInt(args[i + 1]) : 8);
         });
     }
 
     /** Plays the real window for a few seconds at top speed, then screenshots it and exits. */
-    static void smoke(JFrame f) {
+    static JOptionPane findPane(Container c) {
+        if (c instanceof JOptionPane p) return p;
+        for (Component ch : c.getComponents()) if (ch instanceof Container k) { JOptionPane r = findPane(k); if (r != null) return r; }
+        return null;
+    }
+
+    static void smoke(JFrame f, int seconds) {
         GameUi ui = (GameUi) f.getContentPane();
+        String war = System.getProperty("smoke.war");
+        if (war != null && ui.gs.world.nationByTag.containsKey(war)) ui.gs.declareWar(ui.gs.player, ui.gs.world.nationByTag.get(war));
         ui.setSpeed(5);
-        javax.swing.Timer t = new javax.swing.Timer(8000, e -> {
+        // unattended: answer any modal dialog with its first option, and resume play after automatic pauses
+        javax.swing.Timer auto = new javax.swing.Timer(250, e -> {
+            for (Window win : Window.getWindows()) {
+                if (!(win instanceof JDialog d) || !d.isVisible()) continue;
+                JOptionPane pane = findPane(d.getContentPane());
+                if (pane != null) { Object[] o = pane.getOptions(); pane.setValue(o != null && o.length > 0 ? o[0] : JOptionPane.OK_OPTION); } else d.dispose();
+            }
+            if (ui.paused) ui.setPaused(false);
+        });
+        auto.start();
+        javax.swing.Timer t = new javax.swing.Timer(seconds * 1000, e -> {
             try {
                 BufferedImage img = new BufferedImage(f.getWidth(), f.getHeight(), BufferedImage.TYPE_INT_RGB);
                 f.paint(img.getGraphics());
                 ImageIO.write(img, "png", new File("smoke.png"));
+                Runtime rt = Runtime.getRuntime();
+                System.out.printf("heap used %d MB, nations alive %d, armies %d, wars on player %d%n", (rt.totalMemory() - rt.freeMemory()) >> 20, java.util.stream.IntStream.range(0, ui.gs.N).filter(n -> ui.gs.ns[n].alive).count(), ui.gs.armies.size(), java.util.stream.IntStream.range(0, ui.gs.N).filter(n -> ui.gs.war[ui.gs.player][n]).count());
                 System.out.printf("renders %d avg %.1f ms%n", ui.map.renders, ui.map.renderNs / 1e6 / Math.max(1, ui.map.renders));
                 System.out.printf("smoke ok, day %d | per tick ms: sim %.1f colors %.1f ui+paint %.1f (%d ticks)%n", ui.gs.day, GameUi.simNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.colorNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.uiNs / 1e6 / Math.max(1, GameUi.ticks), GameUi.ticks);
             } catch (Exception ex) { ex.printStackTrace(); }
@@ -125,11 +154,11 @@ public final class WarfareApp {
             GameUi ui = new GameUi(gs, null);
             ui.setSize(1500, 900);
             layoutAll(ui);
-            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, 3.2);
+            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, args.length > 10 ? Double.parseDouble(args[10]) : 3.2);
             if (args.length > 5) ui.map.setMode(MapPanel.Mode.valueOf(args[5]));
             ui.map.selProv = fp;
             if (args.length > 6) ui.tabs.setSelectedIndex(Integer.parseInt(args[6]));
-            if (args.length > 9) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(args[9]); }
+            if (args.length > 9 && Integer.parseInt(args[9]) >= 0) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(args[9]); }
             else ui.map.tutorial.active = false;
             if (args.length > 8 && args[8].equals("toast")) ui.map.toast("Out of Nowhere", "Win a battle with Ambush while unseen.", "t_ambush");
             if (args.length > 7 && args[7].equals("army"))

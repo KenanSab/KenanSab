@@ -17,7 +17,7 @@ final class GameUi extends JPanel {
     final SelectionPanel selection;
     final ProductionPanel production;
     final SidePanels.Diplomacy diplomacy;
-    final SidePanels.Log log;
+    final ReportsPanel log;
     final JTabbedPane tabs = new JTabbedPane();
     final JLabel newsBar = new JLabel(" ");
     final TopBar topBar;
@@ -34,7 +34,7 @@ final class GameUi extends JPanel {
         selection = new SelectionPanel(gs, map, refresh);
         production = new ProductionPanel(gs, map, refresh);
         diplomacy = new SidePanels.Diplomacy(gs, map, refresh);
-        log = new SidePanels.Log(gs);
+        log = new ReportsPanel(gs);
         map.tutorial = new Tutorial(Settings.tutorial && gs.day < 3, gs.day);
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
@@ -80,6 +80,18 @@ final class GameUi extends JPanel {
             im.put(KeyStroke.getKeyStroke(KeyEvent.VK_0 + s, 0), "speed" + s);
             am.put("speed" + s, new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { setSpeed(sp); } });
         }
+        String[] names = {"left", "right", "up", "down"};
+        int[][] keys = {{KeyEvent.VK_LEFT, KeyEvent.VK_A}, {KeyEvent.VK_RIGHT, KeyEvent.VK_D}, {KeyEvent.VK_UP, KeyEvent.VK_W}, {KeyEvent.VK_DOWN, KeyEvent.VK_S}};
+        double[][] dirs = {{90, 0}, {-90, 0}, {0, 90}, {0, -90}};
+        for (int i = 0; i < 4; i++) {
+            final double[] d = dirs[i];
+            for (int k : keys[i]) im.put(KeyStroke.getKeyStroke(k, 0), "pan" + names[i]);
+            am.put("pan" + names[i], new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.pan(d[0], d[1]); } });
+        }
+        for (int k : new int[]{KeyEvent.VK_EQUALS, KeyEvent.VK_PLUS, KeyEvent.VK_ADD}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomin");
+        for (int k : new int[]{KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT}) im.put(KeyStroke.getKeyStroke(k, 0), "zoomout");
+        am.put("zoomin", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(1.25); } });
+        am.put("zoomout", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { map.zoomBy(0.8); } });
         im.put(KeyStroke.getKeyStroke(KeyEvent.VK_M, 0), "mode");
         am.put("mode", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) {
             MapPanel.Mode[] m = MapPanel.Mode.values(); map.setMode(m[(map.mode.ordinal() + 1) % m.length]); } });
@@ -158,7 +170,10 @@ final class GameUi extends JPanel {
             String s = gs.news.get(i);
             String me3 = gs.nationName(me);
             if (s.contains("NUCLEAR STRIKE") || s.contains("launches a nuclear")) Audio.get().play(Synth.Sfx.NUKE);
-            else if (s.contains("WAR:") && s.contains(me3)) Audio.get().play(Synth.Sfx.WAR_HORN);
+            else if (s.contains("WAR:") && s.contains(me3)) {
+                Audio.get().play(Synth.Sfx.WAR_HORN);
+                if (s.contains("on " + me3 + "!")) { map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle"); gs.pauseRequested = true; }
+            }
             else if (s.contains("captures") && s.contains(me3)) Audio.get().play(Synth.Sfx.CAPTURE);
             else if (s.contains("Battle begins")) Audio.get().play(Synth.Sfx.BATTLE);
             else if (s.contains("ALERT")) Audio.get().play(Synth.Sfx.ALERT);
@@ -299,6 +314,7 @@ final class GameUi extends JPanel {
         JMenuItem keys = new JMenuItem("Controls");
         keys.addActionListener(e -> JOptionPane.showMessageDialog(this,
                 "Space: pause / play      1-5: game speed      M: cycle map mode      Esc: deselect army\n"
+                        + "Arrow keys / WASD: pan      + / -: zoom\n"
                         + "Left-click an army marker, then left-click a province to march there.\n"
                         + "Right-click: inspect a province.   Mouse wheel: zoom.   Drag: pan.\n\n"
                         + "Fog of war: you only see what your units, provinces, radar, aircraft, agents,\n"

@@ -116,7 +116,8 @@ public final class Ai {
                 gs.build(n, p, gs.rng.nextBoolean() ? Building.FACTORY : (war ? Building.FORTIFICATION : Building.INFRASTRUCTURE));
         }
         double threshold = war ? 60 : 160;
-        if (s.money > threshold && s.manpower > 12 && s.recruitQueue.size() < gs.productionCapacity(n)) {
+        double cap = gs.baseUnits[n] * (war ? 2.6 : 1.25);
+        if (s.money > threshold && gs.unitsOf(n) < cap && s.manpower > 12 && s.recruitQueue.size() < gs.productionCapacity(n)) {
             double rich = ni.gdp / Math.max(1, ni.population / 1e6);
             double[] comp = new double[UnitType.N];
             comp[UnitType.INFANTRY.ordinal()] = 4;

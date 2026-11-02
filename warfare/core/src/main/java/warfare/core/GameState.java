@@ -32,6 +32,7 @@ public final class GameState implements Serializable {
     public final Map<Integer, Combat.Battle> battles = new HashMap<>();
     public final Intel[] intel;
     public int nextArmyId = 1, nextBattleId = 1, nextWingId = 1;
+    public double[] baseUnits;            // starting force size per nation, used to cap AI build-up
     public final List<int[]> nukesInFlight = new ArrayList<>();  // {nation, target, arrivalDay}
 
     // player-facing feeds
@@ -98,10 +99,12 @@ public final class GameState implements Serializable {
     public void attach(WorldData w) { this.world = w; }
 
     void initForces() {
+        baseUnits = new double[N];
         for (int n = 0; n < N; n++) {
             WorldData.NationInfo ni = world.nations.get(n);
             double rich = ni.gdp / Math.max(1, ni.population / 1e6);
             int total = (int) Math.max(4, Math.min(260, Math.round(3 * Math.pow(ni.population / 1e6, 0.45) + Math.sqrt(ni.gdp / 1e5) * 1.2)));
+            baseUnits[n] = total;
             int perArmy = 8;
             int count = Math.max(1, (int) Math.ceil(total / (double) perArmy));
             List<Integer> border = new ArrayList<>();
@@ -194,6 +197,13 @@ public final class GameState implements Serializable {
     public double gdpOf(int n) {
         double s = 0;
         for (int p = 0; p < P; p++) if (owner[p] == n) s += world.provinces.get(p).gdp * devastation[p] * (1 + 0.15 * factory[p]);
+        return s;
+    }
+
+    public double unitsOf(int n) {
+        double s = 0;
+        for (Army a : armies.values()) if (a.owner == n && !a.decoy) s += a.totalUnits();
+        for (NationState.Recruit r : ns[n].recruitQueue) for (double u : r.units) s += u;
         return s;
     }
 

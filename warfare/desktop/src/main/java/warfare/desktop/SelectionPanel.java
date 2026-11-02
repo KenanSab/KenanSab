@@ -15,17 +15,16 @@ final class SelectionPanel extends JPanel {
     final GameState gs;
     final MapPanel map;
     final Runnable refreshAll;
-    private final JPanel content = new JPanel();
+    private final JPanel content = new Ui.ScrollColumn();
     private final JScrollPane scroll;
 
     SelectionPanel(GameState gs, MapPanel map, Runnable refreshAll) {
         super(new BorderLayout());
         this.gs = gs; this.map = map; this.refreshAll = refreshAll;
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBackground(Ui.PANEL);
         content.setBorder(BorderFactory.createEmptyBorder(10, 12, 12, 12));
         scroll = new JScrollPane(content);
         scroll.setBorder(null);
+        scroll.getViewport().setBackground(Ui.PANEL);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
         add(scroll, BorderLayout.CENTER);
     }

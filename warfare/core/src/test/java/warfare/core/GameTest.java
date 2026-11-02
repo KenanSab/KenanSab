@@ -331,4 +331,30 @@ class GameTest {
         }
         assertTrue(wins > 5 && fails > 5, "wins " + wins + " fails " + fails);
     }
+
+    @Test
+    void economyReport() {
+        GameState gs = game("FRA");
+        gs.advanceDay();
+        int neg = 0; double worst = 0; String worstTag = "";
+        for (int n = 0; n < gs.N; n++) {
+            if (gs.ns[n].lastIncome < 0) { neg++; if (gs.ns[n].lastIncome < worst) { worst = gs.ns[n].lastIncome; worstTag = world.nations.get(n).tag; } }
+        }
+        System.out.println("day1: nations with negative income " + neg + "/" + gs.N + " worst " + worstTag + " " + worst);
+        for (int d = 0; d < 365; d++) { gs.advanceDay(); gs.pendingEvents.clear(); gs.pauseRequested = false; }
+        int broke = 0, rich = 0; double minM = 1e9, maxM = -1e9;
+        for (int n = 0; n < gs.N; n++) {
+            if (!gs.ns[n].alive) continue;
+            double m = gs.ns[n].money;
+            if (m <= -150) broke++;
+            if (m > 5000) rich++;
+            minM = Math.min(minM, m); maxM = Math.max(maxM, m);
+        }
+        System.out.println("day365: broke(<=-150) " + broke + ", rich(>5000) " + rich + ", min " + minM + ", max " + maxM);
+        double[] samples = new double[5]; int i = 0;
+        for (String t : new String[]{"EST", "FRA", "USA", "NGA", "IND"}) {
+            Integer idx = world.nationByTag.get(t);
+            if (idx != null) { System.out.printf("  %s money %.0f income %+.2f units %.0f%n", t, gs.ns[idx].money, gs.ns[idx].lastIncome, gs.armies.values().stream().filter(a -> a.owner == idx).mapToDouble(Army::totalUnits).sum()); }
+        }
+    }
 }

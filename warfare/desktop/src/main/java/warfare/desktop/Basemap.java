@@ -76,7 +76,7 @@ final class Basemap {
                 double f = (1 + shade) * fine;
                 double lr = soft[0][i] * f, lg = soft[1][i] * f, lb = soft[2][i] * f;
                 // ocean: deeper away from land, with a bright shelf close to the coast
-                double depth = Math.pow(Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9), 0.8);
+                double depth = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);
                 double ripple = 0.95 + 0.1 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
                 double or = (10 + 36 * depth) * ripple, og = (26 + 78 * depth) * ripple, ob = (50 + 92 * depth) * ripple;
                 double m = Math.min(1, Math.max(0, mask[i]));
@@ -113,7 +113,7 @@ final class Basemap {
                 int row = y * W;
                 for (int x = -r; x <= r; x++) sum += a[row + Math.max(0, Math.min(W - 1, x))];
                 for (int x = 0; x < W; x++) {
-                    b[row + x] = (float) (sum / (2 * r + 1));
+                    b[row + x] = (float) Math.max(0, sum / (2 * r + 1));
                     sum += a[row + Math.min(W - 1, x + r + 1)] - a[row + Math.max(0, x - r)];
                 }
             }
@@ -121,7 +121,7 @@ final class Basemap {
                 double sum = 0;
                 for (int y = -r; y <= r; y++) sum += b[Math.max(0, Math.min(H - 1, y)) * W + x];
                 for (int y = 0; y < H; y++) {
-                    a[y * W + x] = (float) (sum / (2 * r + 1));
+                    a[y * W + x] = (float) Math.max(0, sum / (2 * r + 1));
                     sum += b[Math.min(H - 1, y + r + 1) * W + x] - b[Math.max(0, y - r) * W + x];
                 }
             }

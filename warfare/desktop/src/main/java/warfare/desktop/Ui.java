@@ -71,6 +71,16 @@ final class Ui {
         @Override public Dimension getMaximumSize() { return new Dimension(Integer.MAX_VALUE, getPreferredSize().height); }
     }
 
+    /** Vertical column that always matches the scroll viewport's width (so nothing is clipped on the right). */
+    static class ScrollColumn extends JPanel implements Scrollable {
+        ScrollColumn() { setLayout(new BoxLayout(this, BoxLayout.Y_AXIS)); setBackground(PANEL); }
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(Rectangle r, int o, int d) { return 18; }
+        @Override public int getScrollableBlockIncrement(Rectangle r, int o, int d) { return 120; }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
     /** Thin progress bar. */
     static class Bar extends JComponent {
         double value; Color color;

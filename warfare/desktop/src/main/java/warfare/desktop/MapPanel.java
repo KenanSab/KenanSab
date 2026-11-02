@@ -135,6 +135,14 @@ final class MapPanel extends JPanel {
         zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; viewDirty = true; repaint();
     }
 
+    void pan(double dx, double dy) { ox += dx; oy += dy; viewDirty = true; repaint(); }
+
+    void zoomBy(double f) {
+        double nz = Math.max(0.4, Math.min(16, zoom * f)), cx = getWidth() / 2.0, cy = getHeight() / 2.0;
+        ox = cx - (cx - ox) * nz / zoom; oy = cy - (cy - oy) * nz / zoom;
+        zoom = nz; viewDirty = true; repaint();
+    }
+
     void setMode(Mode m) { mode = m; Arrays.fill(fillArgb, 1); fillDirty = true; refreshColors(); repaint(); }
 
     // ------------------------------------------------------------------ labels

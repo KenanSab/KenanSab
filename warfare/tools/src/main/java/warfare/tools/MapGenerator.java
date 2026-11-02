@@ -245,6 +245,7 @@ public final class MapGenerator {
         List<Nation> res = new ArrayList<>();
         for (var e : map.entrySet()) {
             Nation n = e.getValue();
+            if (n.pop == 0 && n.gdp == 0) continue;     // uninhabited disputed bits (reefs, no-man's-lands): not countries
             n.index = res.size();
             String t = tagOf.getOrDefault(e.getKey(), e.getKey());
             n.tag = t.equals("-99") ? "X" + n.index : t;
