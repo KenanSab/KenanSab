@@ -60,11 +60,9 @@ final class Rail extends JPanel {
             boolean on = items.get(active) == this;
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(3, 5, w - 4, h - 6, 16, 16));
-            g.setPaint(on ? new GradientPaint(0, 0, new Color(81, 65, 51, 245), 0, h, new Color(55, 43, 34, 245)) : new GradientPaint(0, 0, new Color(48, 38, 29, 238), 0, h, new Color(27, 21, 16, 242)));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 16, 16));
-            g.setColor(on ? new Color(236, 192, 92, 220) : hover ? new Color(255, 255, 255, 90) : new Color(255, 255, 255, 38));
-            g.setStroke(new BasicStroke(on ? 1.8f : 1.2f));
-            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 4, h - 5, 16, 16));
+            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 8, 8), on ? Tex.Kind.LEATHER : Tex.Kind.WOOD, on ? 0.6f : 1f);
+            if (on) { g.setColor(new Color(236, 192, 92, 50)); g.fill(new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 8, 8)); }
+            Tex.frame(g, 0.5f, 0.5f, w - 4, h - 5, 8, false, on || hover);
             if (on) { g.setColor(Wf.GOLD); g.fillRoundRect(0, 14, 4, h - 32, 4, 4); }
             g.drawImage(Assets.icon(icon, 28, on ? Wf.GOLD : hover ? Color.WHITE : new Color(214, 222, 238)), (w - 3 - 28) / 2, 9, null);
             g.setFont(Fonts.label(12.5f));

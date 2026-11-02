@@ -86,8 +86,7 @@ final class Hud {
             // plate behind the text
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(34, 14, getWidth() - 36, h - 16, 32, 32));
-            g.setPaint(new GradientPaint(0, 8, new Color(51, 41, 32, 238), 0, h, new Color(27, 21, 16, 242)));
-            g.fill(new RoundRectangle2D.Float(30, 10, getWidth() - 36, h - 18, 32, 32));
+            Tex.plate(g, new RoundRectangle2D.Float(30, 10, getWidth() - 36, h - 18, 32, 32), Tex.Kind.WOOD, 1f);
             g.setColor(hover ? new Color(236, 192, 92, 200) : new Color(255, 255, 255, 44));
             g.setStroke(new BasicStroke(1.3f));
             g.draw(new RoundRectangle2D.Float(30.5f, 10.5f, getWidth() - 37, h - 19, 32, 32));
@@ -140,8 +139,7 @@ final class Hud {
             int w = getWidth(), h = getHeight();
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(2, 4, w - 3, h - 4, 16, 16));
-            g.setPaint(new GradientPaint(0, 0, new Color(51, 41, 32, 238), 0, h, new Color(27, 21, 16, 242)));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 16, 16));
+            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 16, 16), Tex.Kind.WOOD, 1f);
             g.setColor(new Color(255, 255, 255, 40));
             g.setStroke(new BasicStroke(1.2f));
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 3, h - 5, 16, 16));
@@ -186,8 +184,7 @@ final class Hud {
             int h = getHeight(), w = getWidth(), cy = h / 2;
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(2, 4, w - 3, h - 4, 24, 24));
-            g.setPaint(new GradientPaint(0, 0, new Color(51, 41, 32, 238), 0, h, new Color(27, 21, 16, 242)));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 24, 24));
+            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 24, 24), Tex.Kind.WOOD, 1f);
             g.setColor(new Color(255, 255, 255, 40));
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 3, h - 5, 24, 24));
             int bcy = (h - 4) / 2;
@@ -224,8 +221,7 @@ final class Hud {
             Graphics2D g = (Graphics2D) g0.create();
             Wf.quality(g);
             int w = getWidth(), h = getHeight();
-            g.setPaint(new GradientPaint(0, 0, new Color(51, 41, 32, 238), 0, h, new Color(27, 21, 16, 242)));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 16, 16));
+            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 2, h - 4, 16, 16), Tex.Kind.WOOD, 1f);
             g.setColor(hover ? new Color(236, 192, 92, 200) : new Color(255, 255, 255, 40));
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 3, h - 5, 16, 16));
             g.setColor(Ui.TEXT);

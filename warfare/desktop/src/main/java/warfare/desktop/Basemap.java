@@ -71,14 +71,14 @@ final class Basemap {
                 int i = y * W + x;
                 float dx = height[y * W + Math.min(W - 1, x + 1)] - height[y * W + Math.max(0, x - 1)];
                 float dy = height[Math.min(H - 1, y + 1) * W + x] - height[Math.max(0, y - 1) * W + x];
-                double shade = Math.max(-0.4, Math.min(0.4, (-dx - dy) * 5.5));
-                double fine = 0.93 + 0.14 * fbm(x / 7.0 + 90, y / 7.0 + 12, 2);
+                double shade = Math.max(-0.14, Math.min(0.14, (-dx - dy) * 2.2));
+                double fine = 0.97 + 0.06 * fbm(x / 7.0 + 90, y / 7.0 + 12, 2);
                 double f = (1 + shade) * fine;
-                double lr = soft[0][i] * f, lg = soft[1][i] * f, lb = soft[2][i] * f;
+                double lr = (soft[0][i] * 0.35 + 232 * 0.65) * f, lg = (soft[1][i] * 0.35 + 222 * 0.65) * f, lb = (soft[2][i] * 0.35 + 190 * 0.65) * f;
                 // ocean: deeper away from land, with a bright shelf close to the coast
                 double depth = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);
                 double ripple = 0.95 + 0.1 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
-                double or = (58 + 52 * depth) * ripple, og = (104 + 66 * depth) * ripple, ob = (132 + 62 * depth) * ripple;
+                double or = (150 - 28 * depth) * ripple, og = (196 - 30 * depth) * ripple, ob = (222 - 22 * depth) * ripple;
                 double m = Math.min(1, Math.max(0, mask[i]));
                 int r = clamp(or * (1 - m) + lr * m), g = clamp(og * (1 - m) + lg * m), b = clamp(ob * (1 - m) + lb * m);
                 out[i] = 0xFF000000 | (r << 16) | (g << 8) | b;

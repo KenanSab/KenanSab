@@ -252,12 +252,12 @@ final class MapPanel extends JPanel {
                 return q > 0 ? argb(c, 0.72) : argb(NationColors.mix(c, 0x50545C, 0.35 + 0.35 * stale), 0.62);
             }
             default -> {
-                if (pi.sea) return q > 0 ? 0 : argb(0x0A1426, 0.12 + 0.34 * stale);
+                if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.34 * stale);
                 int ko = in.knownOwner[p];
-                if (ko < 0) return argb(0x555A62, 0.6);
+                if (ko < 0) return argb(0x8C8E88, 0.85);
                 int base = NationColors.rgb(NationColors.of(w.nations.get(ko).tag));
-                if (q > 0 || ko == me) return argb(base, 0.66);
-                return argb(NationColors.mix(NationColors.scale(base, 0.85), 0x5A5E68, 0.55 * stale), 0.60 - 0.14 * stale);
+                if (q > 0 || ko == me) return argb(base, 0.93);
+                return argb(NationColors.mix(NationColors.scale(base, 0.92), 0x8A8A84, 0.6 * stale), 0.90 - 0.1 * stale);
             }
         }
     }
@@ -292,11 +292,10 @@ final class MapPanel extends JPanel {
     }
 
     private void drawArcPasses(Graphics2D g, Rectangle2D worldView) {
-        if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 34), 0.8);
-        if (zoom >= 1.15) strokeArcs(g, worldView, 3, new Color(26, 20, 15, 105), 0.9);
-        strokeArcs(g, worldView, 1, new Color(150, 196, 236, 55), 5.0);
-        strokeArcs(g, worldView, 2, new Color(16, 12, 9, 215), 1.7);
-        strokeArcs(g, worldView, 1, new Color(22, 17, 12, 230), 1.35);
+        if (zoom >= 0.9) strokeArcs(g, worldView, 4, new Color(255, 255, 255, 40), 0.7);
+        if (zoom >= 0.9) strokeArcs(g, worldView, 3, new Color(255, 255, 255, 110), 0.8);
+        strokeArcs(g, worldView, 1, new Color(90, 70, 50, 120), 1.2);
+        strokeArcs(g, worldView, 2, new Color(52, 38, 26, 235), 1.5);
     }
 
     private void renderLayers() {

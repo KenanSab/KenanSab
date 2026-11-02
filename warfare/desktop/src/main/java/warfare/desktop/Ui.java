@@ -60,11 +60,13 @@ final class Ui {
         @Override protected void paintComponent(Graphics g0) {
             Graphics2D g = (Graphics2D) g0.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.setColor(hover ? CARD_HI : fill);
-            g.fill(new RoundRectangle2D.Float(0, 0, getWidth() - 1, getHeight() - 1, 12, 12));
+            RoundRectangle2D cardShape = new RoundRectangle2D.Float(0, 0, getWidth() - 1, getHeight() - 1, 6, 6);
+            Tex.plate(g, cardShape, Tex.Kind.LEATHER, 0.7f);
+            g.setColor(hover ? new Color(255, 230, 170, 36) : new Color(0, 0, 0, 40));
+            g.fill(cardShape);
             g.setColor(edge);
             g.setStroke(new BasicStroke(edge.getAlpha() > 100 ? 2f : 1f));
-            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 2, getHeight() - 2, 12, 12));
+            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 2, getHeight() - 2, 6, 6));
             g.dispose();
             super.paintComponent(g0);
         }

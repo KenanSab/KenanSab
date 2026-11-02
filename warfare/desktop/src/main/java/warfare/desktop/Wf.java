@@ -75,9 +75,13 @@ final class Wf {
             }
             if (hover && on) { top = brighter(top, 1.18); bot = brighter(bot, 1.18); if (kind != Kind.PRIMARY) edge = new Color(236, 192, 92, 190); }
             if (down && on) { top = brighter(top, 0.82); bot = brighter(bot, 0.82); }
-            RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, 12, 12);
-            g.setPaint(new GradientPaint(0, 0, top, 0, h, bot));
-            g.fill(shape);
+            RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, 6, 6);
+            if (kind == Kind.GHOST) { g.setPaint(new GradientPaint(0, 0, top, 0, h, bot)); g.fill(shape); }
+            else {
+                g.setPaint(Tex.paint(kind == Kind.PRIMARY ? Tex.Kind.GOLD : kind == Kind.DANGER ? Tex.Kind.LEATHER : Tex.Kind.LEATHER)); g.fill(shape);
+                if (kind == Kind.DANGER) { g.setColor(new Color(150, 40, 34, 170)); g.fill(shape); }
+                g.setPaint(new GradientPaint(0, 0, new Color(255, 240, 210, hover && on ? 70 : 34), 0, h, new Color(0, 0, 0, down ? 40 : 100))); g.fill(shape);
+            }
             g.setColor(edge);
             g.setStroke(new BasicStroke(1.2f));
             g.draw(shape);
@@ -328,15 +332,13 @@ final class Wf {
             Graphics2D g = (Graphics2D) g0.create();
             quality(g);
             int w = getWidth(), h = getHeight();
-            g.setColor(new Color(0, 0, 0, 80));
-            g.fill(new RoundRectangle2D.Float(3, 5, w - 4, h - 4, 20, 20));
-            g.setPaint(new GradientPaint(0, 0, new Color(41, 32, 25, 250), 0, h, new Color(25, 19, 14, 252)));
-            g.fill(new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 20, 20));
-            g.setColor(new Color(255, 255, 255, 36));
-            g.setStroke(new BasicStroke(1.2f));
-            g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, w - 5, h - 5, 20, 20));
-            g.setPaint(new GradientPaint(16, 0, GOLD, w * 0.6f, 0, new Color(236, 192, 92, 0)));
-            g.fillRect(16, 52, (int) (w * 0.6f), 2);
+            g.setColor(new Color(0, 0, 0, 90));
+            g.fill(new RoundRectangle2D.Float(3, 6, w - 4, h - 4, 10, 10));
+            RoundRectangle2D body = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 10, 10);
+            Tex.plate(g, body, Tex.Kind.DARK_LEATHER, 1f);
+            g.setColor(new Color(0, 0, 0, 70));
+            g.fillRect(8, 54, w - 20, 1);
+            Tex.frame(g, 0.5f, 0.5f, w - 5, h - 5, 10, true, false);
             g.dispose();
         }
 
