@@ -304,6 +304,26 @@ final class Wf {
         final JPanel body = new JPanel(new BorderLayout());
         private final Runnable onClose;
 
+        static boolean instant;
+        private float fade = instant ? 1f : 0f;
+        private javax.swing.Timer fadeTimer;
+
+        @Override public void addNotify() {
+            super.addNotify();
+            if (fade >= 1f) return;
+            fadeTimer = new javax.swing.Timer(16, e -> { fade = Math.min(1f, fade + 0.14f); repaint(); if (fade >= 1f) fadeTimer.stop(); });
+            fadeTimer.start();
+        }
+
+        @Override public void paint(Graphics g0) {
+            if (fade >= 1f) { super.paint(g0); return; }
+            Graphics2D g = (Graphics2D) g0.create();
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0.02f, fade)));
+            g.translate(0, (int) ((1 - fade) * 10));
+            super.paint(g);
+            g.dispose();
+        }
+
         Window(String title, String icon, Runnable onClose) {
             super(new BorderLayout());
             this.onClose = onClose;

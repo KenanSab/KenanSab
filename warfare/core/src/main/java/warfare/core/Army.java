@@ -24,6 +24,9 @@ public final class Army implements Serializable {
     public boolean decoy;          // fake force: looks like `fake` battalions from afar, exposed up close
     public int fake;
     public int raidCooldown;
+    public int entrench;           // days spent dug in (0-10): up to +25% defence
+    public int lastProvince = -1;
+    public boolean outOfSupply;    // fighting beyond friendly supply lines: attrition and morale loss
 
     public Army(int id, int owner, int province, String name) {
         this.id = id; this.owner = owner; this.province = province; this.name = name;

@@ -213,7 +213,23 @@ final class War {
             if (a.owner < 0 || a.battleId >= 0) continue;
             Budget bd = gs.ns[a.owner].budget();
             double cap = 60 + gs.ns[a.owner].stability * 0.4 + (bd.military - 0.05) * 60 - (bd.fuelRationing ? 3 : 0);
-            if (a.morale < cap) a.morale = Math.min(cap, a.morale + 0.8);
+            // entrenchment: armies that stay put dig in; moving resets it
+            if (a.province == a.lastProvince && a.path.isEmpty()) a.entrench = Math.min(10, a.entrench + 1); else a.entrench = 0;
+            a.lastProvince = a.province;
+            // supply: only own, allied or friendly-controlled ground feeds an army; elsewhere it bleeds
+            int ctl = gs.controller[a.province];
+            boolean supplied = a.embarked || gs.isSea(a.province) || ctl == a.owner || (ctl >= 0 && gs.isAlly(a.owner, ctl));
+            a.outOfSupply = !supplied;
+            if (!supplied) {
+                Terrain tr = gs.world.provinces.get(a.province).terrain;
+                double harsh = (tr == Terrain.DESERT || tr == Terrain.MOUNTAIN || tr == Terrain.ARCTIC || tr == Terrain.JUNGLE) ? 2.0 : 1.0;
+                double infra = 1 - 0.5 * gs.ns[a.owner].infraIndex;
+                a.morale = Math.max(15, a.morale - 0.35 * harsh);
+                double loss = 0.0012 * harsh * infra;
+                for (int i = 0; i < a.units.length; i++) a.units[i] = Math.max(0, a.units[i] * (1 - loss));
+                if (a.owner == gs.player && gs.day % 10 == 0 && a.morale < 45) gs.news(a.name + " is cut off from supply near " + gs.prov(a.province).name + ".");
+            }
+            if (a.morale < cap) a.morale = Math.min(cap, a.morale + (a.outOfSupply ? 0 : 0.8));
             else if (a.morale > cap) a.morale -= 0.5;
         }
     }

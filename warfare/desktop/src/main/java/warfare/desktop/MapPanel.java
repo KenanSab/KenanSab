@@ -52,7 +52,33 @@ final class MapPanel extends JPanel {
     private final int[] fillArgb;
     private final byte[] arcClass;          // 0 none, 1 coast, 2 national, 3 province, 4 sea zone
     private final List<Label> labels = new ArrayList<>();
-    private BufferedImage baseImg, fillImg, borderImg;
+    private double targetZoom = -1, velX, velY;
+    private Point anchor = new Point(0, 0);
+    private final javax.swing.Timer animTimer = new javax.swing.Timer(16, e -> animate());
+
+    @Override public void addNotify() { super.addNotify(); animTimer.start(); }
+    @Override public void removeNotify() { animTimer.stop(); super.removeNotify(); }
+
+    /** Eases wheel zoom toward its target, coasts after a drag, and keeps the sea moving. */
+    private void animate() {
+        if (!isShowing()) return;
+        boolean moved = false;
+        if (targetZoom > 0) {
+            double nz = zoom + (targetZoom - zoom) * 0.32;
+            if (Math.abs(nz - targetZoom) < targetZoom * 0.004) { nz = targetZoom; targetZoom = -1; }
+            ox = anchor.x - (anchor.x - ox) * nz / zoom;
+            oy = anchor.y - (anchor.y - oy) * nz / zoom;
+            zoom = nz; moved = true;
+        }
+        if (dragFrom == null && (Math.abs(velX) > 0.4 || Math.abs(velY) > 0.4)) {
+            ox += velX; oy += velY; velX *= 0.90; velY *= 0.90; moved = true;
+        }
+        if (moved) viewDirty = true;
+        repaint();
+    }
+
+    private BufferedImage baseImg, fillImg, borderImg, waveMask, waveBuf;
+    private long waveStamp; private boolean waveMaskDirty = true;
     private double layerOx, layerOy, layerZoom;
     private boolean viewDirty = true, fillDirty = true, borderDirty = true;
     long renderNs, renders;
@@ -113,16 +139,17 @@ final class MapPanel extends JPanel {
         arcClass = new byte[shapes.p1.length];
         buildLabels();
         MouseAdapter ma = new MouseAdapter() {
-            @Override public void mousePressed(MouseEvent e) { dragFrom = e.getPoint(); dragged = false; }
+            @Override public void mousePressed(MouseEvent e) { dragFrom = e.getPoint(); dragged = false; velX = velY = 0; }
             @Override public void mouseDragged(MouseEvent e) {
                 if (dragFrom == null || SwingUtilities.isRightMouseButton(e)) return;
                 mouse = e.getPoint();
                 int dx = e.getX() - dragFrom.x, dy = e.getY() - dragFrom.y;
                 if (Math.abs(dx) + Math.abs(dy) > 3) dragged = true;
-                if (dragged) { ox += dx; oy += dy; dragFrom = e.getPoint(); repaint(); }
+                if (dragged) { ox += dx; oy += dy; velX = dx * 0.6 + velX * 0.4; velY = dy * 0.6 + velY * 0.4; dragFrom = e.getPoint(); repaint(); }
             }
             @Override public void mouseReleased(MouseEvent e) {
                 if (!dragged) click(e); else { viewDirty = true; repaint(); }
+                if (dragged && Math.abs(velX) + Math.abs(velY) < 2) velX = velY = 0;
                 dragFrom = null;
             }
             @Override public void mouseMoved(MouseEvent e) {
@@ -136,11 +163,9 @@ final class MapPanel extends JPanel {
             }
             @Override public void mouseExited(MouseEvent e) { mouse = null; hoverProv = -1; hoverOverlay = -1; repaint(); }
             @Override public void mouseWheelMoved(MouseWheelEvent e) {
-                double f = e.getWheelRotation() < 0 ? 1.2 : 1 / 1.2;
-                double nz = Math.max(0.4, Math.min(16, zoom * f));
-                ox = e.getX() - (e.getX() - ox) * nz / zoom;
-                oy = e.getY() - (e.getY() - oy) * nz / zoom;
-                zoom = nz; viewDirty = true; repaint();
+                double f = e.getWheelRotation() < 0 ? 1.25 : 1 / 1.25;
+                targetZoom = Math.max(0.4, Math.min(16, (targetZoom > 0 ? targetZoom : zoom) * f));
+                anchor = e.getPoint(); velX = velY = 0;
             }
         };
         addMouseListener(ma); addMouseMotionListener(ma); addMouseWheelListener(ma);
@@ -255,7 +280,7 @@ final class MapPanel extends JPanel {
                 if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.34 * stale);
                 int ko = in.knownOwner[p];
                 if (ko < 0) return argb(0x8C8E88, 0.85);
-                int base = NationColors.rgb(NationColors.of(w.nations.get(ko).tag));
+                int base = NationColors.scale(NationColors.rgb(NationColors.of(w.nations.get(ko).tag)), 0.74);
                 if (q > 0 || ko == me) return argb(base, 0.93);
                 return argb(NationColors.mix(NationColors.scale(base, 0.92), 0x8A8A84, 0.6 * stale), 0.90 - 0.1 * stale);
             }
@@ -315,6 +340,7 @@ final class MapPanel extends JPanel {
             at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
             g.drawImage(basemap.image, at, null);
             g.dispose();
+            waveMaskDirty = true;
         }
         if (view || fillFull) {
             fillImg = fresh(fillImg, BufferedImage.TYPE_INT_ARGB);
@@ -389,6 +415,63 @@ final class MapPanel extends JPanel {
             if (arcClass[a] == cls && view.intersects(shapes.arcBounds[a])) g.draw(shapes.arcPath[a]);
     }
 
+    private static BufferedImage waveTile;
+    private static BufferedImage waveTile() {
+        if (waveTile != null) return waveTile;
+        int T = 256;
+        BufferedImage t = new BufferedImage(T, T, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < T; y++)
+            for (int x = 0; x < T; x++) {
+                double u = 2 * Math.PI * x / T, v = 2 * Math.PI * y / T;
+                double warp = 0.9 * Math.sin(2 * u + 3 * v) + 0.6 * Math.sin(3 * u - 2 * v + 1);
+                double a = Math.sin(5 * u + 3 * v + warp) * 0.5 + 0.5, b = Math.sin(-3 * u + 6 * v + 1.7 * warp + 2) * 0.5 + 0.5;
+                double crest = Math.pow(a * b, 5) * 5.5;
+                int al = (int) Math.max(0, Math.min(255, crest * 120));
+                t.setRGB(x, y, (al << 24) | 0xEAF6FF);
+            }
+        return waveTile = t;
+    }
+
+    /** Animated swell: two scrolling crest layers composited only over the sea. */
+    private void drawWaves(Graphics2D g, int dx, int dy) {
+        int W = getWidth(), H = getHeight();
+        if (W < 2 || H < 2 || basemap.seaMask == null) return;
+        long now = System.currentTimeMillis();
+        if (waveMask == null || waveMask.getWidth() != W || waveMask.getHeight() != H) { waveMask = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB); waveBuf = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB); waveMaskDirty = true; }
+        if (waveMaskDirty) {
+            Graphics2D m = waveMask.createGraphics();
+            m.setComposite(AlphaComposite.Clear); m.fillRect(0, 0, W, H); m.setComposite(AlphaComposite.SrcOver);
+            m.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            AffineTransform at = new AffineTransform();
+            at.translate(layerOx, layerOy);
+            at.scale(zoom / Basemap.PX_PER_UNIT, zoom / Basemap.PX_PER_UNIT);
+            m.drawImage(basemap.seaMask, at, null);
+            m.dispose();
+            waveMaskDirty = false; waveStamp = 0;
+        }
+        if (now - waveStamp >= 45) {
+            waveStamp = now;
+            Graphics2D b = waveBuf.createGraphics();
+            b.setComposite(AlphaComposite.Clear); b.fillRect(0, 0, W, H); b.setComposite(AlphaComposite.SrcOver);
+            BufferedImage tile = waveTile();
+            double t = now / 1000.0;
+            double sc = Math.max(0.8, Math.min(2.2, 0.8 + zoom * 0.25));
+            java.awt.geom.AffineTransform a1 = new java.awt.geom.AffineTransform();
+            a1.translate(t * 9, t * 5); a1.scale(sc, sc);
+            b.setPaint(new TexturePaint(tile, new Rectangle2D.Double(0, 0, 256, 256)));
+            b.setTransform(a1); b.fillRect((int) (-t * 9 / sc) - 300, (int) (-t * 5 / sc) - 300, (int) (W / sc) + 700, (int) (H / sc) + 700);
+            java.awt.geom.AffineTransform a2 = new java.awt.geom.AffineTransform();
+            a2.translate(-t * 6 + 90, t * 8 + 40); a2.scale(sc * 1.45, sc * 1.45);
+            b.setTransform(a2); b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
+            b.fillRect((int) (t * 6 / (sc * 1.45)) - 400, (int) (-t * 8 / (sc * 1.45)) - 300, (int) (W / (sc * 1.45)) + 900, (int) (H / (sc * 1.45)) + 700);
+            b.setTransform(new java.awt.geom.AffineTransform());
+            b.setComposite(AlphaComposite.DstIn);
+            b.drawImage(waveMask, 0, 0, null);
+            b.dispose();
+        }
+        g.drawImage(waveBuf, dx, dy, null);
+    }
+
     @Override
     protected void paintComponent(Graphics g0) {
         super.paintComponent(g0);
@@ -401,6 +484,7 @@ final class MapPanel extends JPanel {
         if (viewDirty || fillDirty || borderDirty || baseImg == null || baseImg.getWidth() != getWidth() || baseImg.getHeight() != getHeight() || layerZoom != zoom) renderLayers();
         int dx = (int) Math.round(ox - layerOx), dy = (int) Math.round(oy - layerOy);
         g.drawImage(baseImg, dx, dy, null);
+        drawWaves(g, dx, dy);
         g.drawImage(fillImg, dx, dy, null);
         g.drawImage(borderImg, dx, dy, null);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

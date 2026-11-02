@@ -73,7 +73,7 @@ public final class Combat {
         b.attTactic = ta; b.defTactic = td;
         double ea = effectiveness(ta, td, att, ter, b.attackerUnseen && b.days <= 3);
         double ed = effectiveness(td, ta, def, ter, b.defenderUnseen && b.days <= 3);
-        double terrainDef = ter.defense * (1 + 0.12 * fort) * (td == Tactic.HOLD_THE_LINE ? 1.15 : 1.0);
+        double terrainDef = ter.defense * (1 + 0.12 * fort) * (td == Tactic.HOLD_THE_LINE ? 1.15 : 1.0) * (1 + 0.025 * Math.min(10, def.entrench));
         double aAtt = attackPower(att, def, attOil) * ea * attTech * moraleMult(att) * (1 + attAir - 0.5 * defAir);
         double dAtt = attackPower(def, att, defOil) * ed * defTech * moraleMult(def) * (1 + defAir - 0.5 * attAir);
         double aDef = avgDef(att) * ea * attTech;

@@ -15,6 +15,8 @@ import java.awt.image.DataBufferInt;
 final class Basemap {
     static final double PX_PER_UNIT = 1.5;
     final BufferedImage image;
+    /** White everywhere that is sea, transparent on land; the animated wave layer is masked with it. */
+    BufferedImage seaMask;
 
     private static final int[] TERRAIN = {
             0x9AA866,   // plains
@@ -74,15 +76,27 @@ final class Basemap {
                 double shade = Math.max(-0.14, Math.min(0.14, (-dx - dy) * 2.2));
                 double fine = 0.97 + 0.06 * fbm(x / 7.0 + 90, y / 7.0 + 12, 2);
                 double f = (1 + shade) * fine;
-                double lr = (soft[0][i] * 0.35 + 232 * 0.65) * f, lg = (soft[1][i] * 0.35 + 222 * 0.65) * f, lb = (soft[2][i] * 0.35 + 190 * 0.65) * f;
+                double lr = (soft[0][i] * 0.45 + 126 * 0.55) * f, lg = (soft[1][i] * 0.45 + 116 * 0.55) * f, lb = (soft[2][i] * 0.45 + 98 * 0.55) * f;
                 // ocean: deeper away from land, with a bright shelf close to the coast
                 double depth = Math.pow(Math.max(0, Math.min(1, coast[i] * 1.8 + shelf[i] * 0.9)), 0.8);
                 double ripple = 0.95 + 0.1 * fbm(x / 20.0 + 200, y / 40.0 + 7, 3);
-                double or = (150 - 28 * depth) * ripple, og = (196 - 30 * depth) * ripple, ob = (222 - 22 * depth) * ripple;
+                double ridgeW = 0.5 + 0.5 * Math.sin(depth * 26 + 4 * fbm(x / 90.0 + 11, y / 90.0 + 5, 3));
+                double caustic = Math.pow(fbm(x / 11.0 + 300, y / 11.0 + 80, 3), 3) * 1.6;
+                double deep = 1 - depth;
+                double or = (14 + 50 * depth) * ripple + 6 * ridgeW * depth + 14 * caustic * depth;
+                double og = (44 + 74 * depth) * ripple + 8 * ridgeW * depth + 18 * caustic * depth;
+                double ob = (74 + 80 * depth) * ripple + 10 * ridgeW * depth + 20 * caustic * depth;
+                double cm = coast[i];
+                double foam = Math.exp(-Math.pow((cm - 0.30) / 0.045, 2)) * 0.34 + Math.exp(-Math.pow((cm - 0.17) / 0.03, 2)) * 0.2;
+                foam *= 0.75 + 0.5 * fbm(x / 9.0 + 500, y / 9.0, 2);
+                or += (225 - or) * foam; og += (240 - og) * foam; ob += (244 - ob) * foam;
                 double m = Math.min(1, Math.max(0, mask[i]));
                 int r = clamp(or * (1 - m) + lr * m), g = clamp(og * (1 - m) + lg * m), b = clamp(ob * (1 - m) + lb * m);
                 out[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
             }
+        seaMask = new BufferedImage(W, H, BufferedImage.TYPE_INT_ARGB);
+        int[] sm = ((DataBufferInt) seaMask.getRaster().getDataBuffer()).getData();
+        for (int i = 0; i < sm.length; i++) sm[i] = ((int) (255 * Math.max(0, Math.min(1, 1 - mask[i] * 1.15))) << 24) | 0xFFFFFF;
     }
 
     private static int clamp(double v) { return (int) Math.max(0, Math.min(255, v)); }

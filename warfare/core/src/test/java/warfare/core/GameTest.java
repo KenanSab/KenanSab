@@ -618,4 +618,23 @@ class GameTest {
         assertEquals(Government.AUTOCRACY, gs.ns[me].gov);
         assertEquals(Math.max(0, st - 15), gs.ns[me].stability, 1e-9);
     }
+
+    @Test
+    void armiesDigInAndBleedOutsideSupply() {
+        GameState gs = new GameState(world, world.nationByTag.get("FRA"), 3);
+        Army home = gs.armies.values().stream().filter(a -> a.owner == gs.player).findFirst().orElseThrow();
+        for (int i = 0; i < 12; i++) gs.advanceDay();
+        assertTrue(home.entrench >= 8, "a stationary army digs in");
+        assertFalse(home.outOfSupply);
+        // drop it into hostile ground: attrition and morale loss
+        int foreign = -1;
+        for (int p = 0; p < gs.world.provinces.size() && foreign < 0; p++)
+            if (!gs.isSea(p) && gs.controller[p] >= 0 && gs.controller[p] != gs.player && !gs.isAlly(gs.player, gs.controller[p]) && gs.armiesIn(p).isEmpty()) foreign = p;
+        home.path.clear(); home.province = foreign; home.lastProvince = foreign; home.morale = 90;
+        double before = home.totalUnits();
+        for (int i = 0; i < 20; i++) { home.province = foreign; home.path.clear(); War.unrest(gs); }
+        assertTrue(home.outOfSupply);
+        assertTrue(home.totalUnits() < before, "units wasted away");
+        assertTrue(home.morale < 90, "morale drained");
+    }
 }

@@ -188,6 +188,7 @@ public final class WarfareApp {
     }
 
     static void startShot(String[] args) throws Exception {
+        Wf.Window.instant = true;
         WorldData world = WorldData.load(assets);
         JPanel[] p = new JPanel[1];
         SwingUtilities.invokeAndWait(() -> p[0] = new StartScreen(world, c -> {}));
@@ -196,6 +197,7 @@ public final class WarfareApp {
 
     /** --shot out.png TAG DAYS FOE MODE [options] : a war between TAG and FOE, DAYS in, rendered headless. */
     static void shot(String[] args) throws Exception {
+        Wf.Window.instant = true;
         String out = args[1], tag = args.length > 2 ? args[2] : "RUS";
         int days = args.length > 3 ? Integer.parseInt(args[3]) : 30;
         WorldData world = WorldData.load(assets);

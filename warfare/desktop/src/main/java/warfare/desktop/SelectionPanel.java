@@ -153,6 +153,7 @@ final class SelectionPanel extends JPanel {
         JPanel col = Ui.column();
         col.add(stat("battle", Ui.TEXT, "Battalions", String.valueOf((int) Math.round(a.totalUnits()))));
         col.add(stat("general", a.morale < 35 ? Ui.RED : Ui.GREEN, "Morale", (int) a.morale + "%"));
+        col.add(stat("oil", a.outOfSupply ? Ui.RED : Ui.GREEN, "Supply", a.outOfSupply ? "CUT OFF - attrition" : "supplied" + (a.entrench >= 2 ? "  -  dug in +" + (int) (a.entrench * 2.5) + "% def" : "")));
         col.add(new Ui.Bar(a.morale / 100.0, a.morale < 35 ? Ui.RED : Ui.GREEN));
         col.add(stat("time", Ui.MUTED, "March speed", (int) a.speed() + " km/day"));
         c.add(col, BorderLayout.CENTER);
