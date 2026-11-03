@@ -24,7 +24,7 @@ final class MapLayers {
     static final int FX_DIV = 4;
     static final Color BACKGROUND = new Color(16, 36, 56);
 
-    record Params(double zoom, double ox, double oy, int w, int h, int[] fill, byte[] arc) {}
+    record Params(double zoom, double ox, double oy, int w, int h, int[] fill, byte[] arc, double snowN, double snowS, double snowCap) {}
 
     /** A placed country name: outline already in image pixels. */
     record NameDraw(Shape outline, Rectangle bounds, float size, float alpha) {}
@@ -32,7 +32,8 @@ final class MapLayers {
     static final class Result {
         final double zoom, ox, oy;
         final int vw, vh, iw, ih;
-        BufferedImage fill, line, composite, waveMask, shoreA, shoreB;
+        BufferedImage fill, line, composite, waveMask, shoreA, shoreB, detail;
+        double snowN, snowS, snowCap;                       // how much of the possible snow lies in each hemisphere (0 summer .. 1 deep winter)
         int[] fillSnap; byte[] arcSnap;
         List<NameDraw> names = new ArrayList<>();
         Result(double zoom, double ox, double oy, int vw, int vh) {
@@ -94,13 +95,14 @@ final class MapLayers {
     // ------------------------------------------------------------------ full render
     Result render(Params p) {
         Result r = new Result(p.zoom, p.ox, p.oy, p.w, p.h);
-        r.fillSnap = p.fill; r.arcSnap = p.arc;
+        r.fillSnap = p.fill; r.arcSnap = p.arc; r.snowN = p.snowN; r.snowS = p.snowS; r.snowCap = p.snowCap;
         r.fill = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
         r.line = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
         r.composite = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_RGB);
         Rectangle all = r.imageRect();
         drawFills(r, all);
         placeNames(r);
+        r.detail = buildDetail(r);
         drawLines(r, all);
         composite(r, all);
         r.waveMask = halfRes(r, base.seaMask);
@@ -134,9 +136,73 @@ final class MapLayers {
         at.scale(r.zoom / Basemap.PX_PER_UNIT, r.zoom / Basemap.PX_PER_UNIT);
         g.drawImage(base.image, at, null);
         g.drawImage(r.fill, 0, 0, null);
+        drawSnow(g, r, clip);
         g.drawImage(base.relief, at, null);
+        if (r.detail != null) g.drawImage(r.detail, 0, 0, null);
         g.drawImage(r.line, 0, 0, null);
         g.dispose();
+    }
+
+    /** Seasonal snow: the stored potential, scaled by how deep the winter is in each hemisphere (the equator sits at map row 560). */
+    private void drawSnow(Graphics2D g, Result r, Rectangle clip) {
+        if (r.snowN < 0.02 && r.snowS < 0.02) return;
+        AffineTransform sat = new AffineTransform();
+        sat.translate(MARGIN + r.ox, MARGIN + r.oy);
+        sat.scale(r.zoom / Basemap.MASK_PX_PER_UNIT, r.zoom / Basemap.MASK_PX_PER_UNIT);
+        double eq = MARGIN + r.oy + 560 * r.zoom;
+        Composite oc = g.getComposite();
+        for (int half = 0; half < 2; half++) {
+            double k = half == 0 ? r.snowN : r.snowS;
+            if (k < 0.02) continue;
+            g.setClip(clip);
+            g.clip(half == 0 ? new Rectangle2D.Double(0, -1e6, r.iw, eq + 1e6) : new Rectangle2D.Double(0, eq, r.iw, 1e6));
+            g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) Math.min(r.snowCap, 0.9 * k)));
+            g.drawImage(base.snow, sat, null);
+        }
+        g.setComposite(oc);
+        g.setClip(clip);
+    }
+
+    /**
+     * Close-up terrain: fine ridged noise lit from the north-west, stronger where the coarse relief is rugged.
+     * Fades in between zoom 4.5 and 10 so the soft underlay never looks smeared when you are right on top of it.
+     */
+    private BufferedImage buildDetail(Result r) {
+        final double z = r.zoom;
+        final double strength = smooth(4.5, 10.0, z);
+        if (strength < 0.03) return null;
+        final BufferedImage img = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
+        final int[] out = ((java.awt.image.DataBufferInt) img.getRaster().getDataBuffer()).getData();
+        final int[] sea = ((java.awt.image.DataBufferInt) base.seaMask.getRaster().getDataBuffer()).getData();
+        final int sw = base.seaMask.getWidth(), sh = base.seaMask.getHeight();
+        final int[] rel = ((java.awt.image.DataBufferInt) base.relief.getRaster().getDataBuffer()).getData();
+        final int rw = base.relief.getWidth(), rh = base.relief.getHeight();
+        final int oct = z >= 16 ? 5 : z >= 9 ? 4 : 3;
+        final double d = 1.0 / z, f = 0.42, worldW = w.width, worldH = w.height;
+        java.util.stream.IntStream.range(0, r.ih).parallel().forEach(y -> {
+            double wy = (y - MARGIN - r.oy) / z;
+            if (wy < 0 || wy >= worldH) return;
+            int my = Math.min(sh - 1, (int) (wy * Basemap.MASK_PX_PER_UNIT)), ry = Math.min(rh - 1, (int) (wy * Basemap.PX_PER_UNIT));
+            for (int x = 0; x < r.iw; x++) {
+                double wx = (x - MARGIN - r.ox) / z;
+                if (wx < 0 || wx >= worldW) continue;
+                int sa = sea[my * sw + Math.min(sw - 1, (int) (wx * Basemap.MASK_PX_PER_UNIT))] >>> 24;
+                if (sa > 190) continue;
+                double land = 1 - sa / 255.0;
+                double rug = (rel[ry * rw + Math.min(rw - 1, (int) (wx * Basemap.PX_PER_UNIT))] >>> 24) / 255.0;
+                double h0 = Basemap.fbm(wx * f + 11, wy * f + 7, oct), hx = Basemap.fbm((wx + d) * f + 11, wy * f + 7, oct), hy = Basemap.fbm(wx * f + 11, (wy + d) * f + 7, oct);
+                double shade = Math.max(-1, Math.min(1, ((h0 - hx) * 0.78 + (h0 - hy) * 0.62) * z * 1.3));
+                double amp = strength * land * (0.22 + 1.1 * rug);
+                int a = (int) Math.min(255, Math.abs(shade) * amp * (shade > 0 ? 0.50 : 0.62) * 255);
+                if (a > 1) out[y * r.iw + x] = shade > 0 ? (a << 24) | 0xFFF6E4 : (a << 24) | 0x120C06;
+            }
+        });
+        return img;
+    }
+
+    private static double smooth(double a, double b, double v) {
+        double t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+        return t * t * (3 - 2 * t);
     }
 
     // ------------------------------------------------------------------ fills

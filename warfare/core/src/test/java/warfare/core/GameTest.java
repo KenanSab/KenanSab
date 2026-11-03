@@ -690,4 +690,42 @@ class GameTest {
             assertEquals(b, gs.owner[p], "the province went home");
         }
     }
+
+    @Test
+    void demandedProvincesChangeHandsOnlyIfTheyAgree() {
+        GameState gs = game("FRA");
+        int a = gs.player, b = world.nationByTag.get("SYR");
+        assertTrue(gs.declareWar(a, b).ok);
+        gs.warStart[a][b] = gs.warStart[b][a] = gs.day - 100;
+        gs.ns[a].warWeariness = 10; gs.ns[b].warWeariness = 10;
+        List<Integer> theirs = new ArrayList<>(world.nations.get(b).provinces);
+        Set<Integer> three = new LinkedHashSet<>(theirs.subList(0, Math.min(3, theirs.size())));
+        for (int p : three) gs.controller[p] = a;                        // occupied, not yet annexed
+        Set<Integer> everything = new LinkedHashSet<>(theirs);
+        assertFalse(gs.assessPeace(a, b, Peace.Term.DEMAND, everything).accepted, "you cannot simply ask for the whole country");
+        assertTrue(Peace.demandCost(gs, a, b, everything) > Peace.demandCost(gs, a, b, three), "more provinces cost more");
+        int capital = world.nations.get(b).capital;
+        assertTrue(Peace.demandCost(gs, a, b, Set.of(capital)) > Peace.demandCost(gs, a, b, Set.of(theirs.get(theirs.get(0) == capital ? 1 : 0))), "the capital is the dearest province");
+        // an exhausted enemy gives up what you hold
+        gs.ns[b].warWeariness = 95; gs.ns[b].stability = 25;
+        Peace.Talk talk = gs.assessPeace(a, b, Peace.Term.DEMAND, three);
+        assertTrue(talk.accepted, "a broken enemy cedes occupied provinces: " + talk.score);
+        assertTrue(gs.negotiatePeace(a, b, Peace.Term.DEMAND, three).ok);
+        for (int p : three) assertEquals(a, gs.owner[p], "ceded by treaty");
+        assertFalse(gs.war[a][b]);
+        // asking for too much produces a smaller counter-offer
+        GameState g2 = game("FRA");
+        int b2 = world.nationByTag.get("SYR");
+        g2.declareWar(g2.player, b2);
+        g2.warStart[g2.player][b2] = g2.warStart[b2][g2.player] = g2.day - 100;
+        g2.ns[b2].warWeariness = 80;
+        List<Integer> prov2 = new ArrayList<>(world.nations.get(b2).provinces);
+        for (int k = 0; k < prov2.size(); k++) if (k % 2 == 0) g2.controller[prov2.get(k)] = g2.player;
+        Peace.Talk big = g2.assessPeace(g2.player, b2, Peace.Term.DEMAND, new LinkedHashSet<>(prov2));
+        assertFalse(big.accepted);
+        if (big.counterDemand != null) {
+            assertTrue(big.counterDemand.size() < prov2.size());
+            assertTrue(g2.assessPeace(g2.player, b2, Peace.Term.DEMAND, big.counterDemand).accepted, "the counter-offer is one they accept");
+        }
+    }
 }

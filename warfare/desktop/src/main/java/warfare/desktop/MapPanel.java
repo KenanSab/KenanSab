@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -66,6 +68,8 @@ final class MapPanel extends JPanel {
         Thread t = new Thread(rn, "map-layers"); t.setDaemon(true); t.setPriority(Thread.NORM_PRIORITY - 1); return t;
     });
     private final boolean[] markedFill, markedArc;
+    private int[] lastOwner;
+    private final List<long[]> flashes = new ArrayList<>();      // {province, startMillis}: a province that just changed hands lights up
     private final List<Integer> pendFill = new ArrayList<>(), pendArc = new ArrayList<>();
     long renderNs, renders, paintNs, paints;
     final long[] seg = new long[8];   // profiling: base blit, fx, highlights, province names, cities, armies/paths, controls
@@ -182,8 +186,12 @@ final class MapPanel extends JPanel {
         markedFill = new boolean[fillArgb.length];
         markedArc = new boolean[arcClass.length];
         MouseAdapter ma = new MouseAdapter() {
-            @Override public void mousePressed(MouseEvent e) { dragFrom = e.getPoint(); dragged = false; velX = velY = 0; }
+            @Override public void mousePressed(MouseEvent e) {
+                dragFrom = e.getPoint(); dragged = false; velX = velY = 0;
+                if (brushActive() && brushBarAt(e.getPoint()) < 0) { paintBrush(e.getPoint(), SwingUtilities.isRightMouseButton(e)); dragged = true; }
+            }
             @Override public void mouseDragged(MouseEvent e) {
+                if (brushActive()) { mouse = e.getPoint(); if (brushBarAt(e.getPoint()) < 0) paintBrush(e.getPoint(), SwingUtilities.isRightMouseButton(e)); dragged = true; repaint(); return; }
                 if (dragFrom == null || SwingUtilities.isRightMouseButton(e)) return;
                 mouse = e.getPoint();
                 int dx = e.getX() - dragFrom.x, dy = e.getY() - dragFrom.y;
@@ -246,6 +254,13 @@ final class MapPanel extends JPanel {
     void refreshColors() {
         Intel in = gs.intelOf(gs.player);
         int me = gs.player;
+        if (lastOwner == null) { lastOwner = new int[fillArgb.length]; Arrays.fill(lastOwner, -2); }
+        long nowMs = System.currentTimeMillis();
+        for (int p = 0; p < lastOwner.length; p++) {
+            int ko = in.knownOwner[p];
+            if (lastOwner[p] >= 0 && ko >= 0 && ko != lastOwner[p] && in.quality[p] > 0 && flashes.size() < 40) flashes.add(new long[]{p, nowMs});
+            lastOwner[p] = ko;
+        }
         for (int p = 0; p < fillArgb.length; p++) {
             int c = colorOf(p, in, me);
             if (c != fillArgb[p]) { fillArgb[p] = c; markFill(p); }
@@ -281,8 +296,16 @@ final class MapPanel extends JPanel {
 
     private static Rectangle union(Rectangle a, Rectangle b) { return a == null ? b : b == null ? a : a.union(b); }
 
+    /** How much of the possible snow lies in a hemisphere on the game date: peaks in midwinter, steps of 0.08 so the map is re-lit rarely. */
+    double seasonSnow(boolean south) {
+        int doy = gs.date().getDayOfYear();
+        double phase = (doy - 20 - (south ? 182 : 0)) / 365.0 * 2 * Math.PI;
+        double winter = Math.max(0, Math.min(1, 0.5 + 0.62 * Math.cos(phase)));
+        return Math.round(winter / 0.08) * 0.08;
+    }
+
     private MapLayers.Params snapshot() {
-        return new MapLayers.Params(zoom, ox, oy, getWidth(), getHeight(), fillArgb.clone(), arcClass.clone());
+        return new MapLayers.Params(zoom, ox, oy, getWidth(), getHeight(), fillArgb.clone(), arcClass.clone(), seasonSnow(false), seasonSnow(true), mode == Mode.TERRAIN ? 0.9 : 0.5);
     }
 
     /** Starts a background render for the current view (at most one in flight). */
@@ -333,6 +356,7 @@ final class MapPanel extends JPanel {
         if (r.vw != W || r.vh != H) return true;
         double s = zoom / r.zoom;
         if (Math.abs(s - 1) > 0.025) return true;
+        if (r.snowN != seasonSnow(false) || r.snowS != seasonSnow(true)) return true;
         double tx = ox - s * (MapLayers.MARGIN + r.ox), ty = oy - s * (MapLayers.MARGIN + r.oy);
         double slack = Math.min(Math.min(-tx / s, r.iw - (W - tx) / s), Math.min(-ty / s, r.ih - (H - ty) / s));
         return slack < MapLayers.MARGIN * 0.4;
@@ -537,9 +561,10 @@ final class MapPanel extends JPanel {
         b.drawImage(r.waveMask, 0, 0, null);
         // surf: two bands at different distances from the coast breathe in antiphase
         double pa = 0.5 + 0.5 * Math.sin(t * 1.5), pb = 0.5 + 0.5 * Math.sin(t * 1.5 + Math.PI);
-        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (0.25 + 0.55 * pa)));
+        double surfK = Math.max(0.12, Math.min(1, (13 - r.zoom) / 8.0));        // the coarse surf mask turns to fog when magnified
+        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) ((0.25 + 0.55 * pa) * surfK)));
         b.drawImage(r.shoreA, 0, 0, null);
-        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) (0.15 + 0.5 * pb)));
+        b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) ((0.15 + 0.5 * pb) * surfK)));
         b.drawImage(r.shoreB, 0, 0, null);
         // cloud shadows fall on land and sea alike
         tile(b, cloudTile(), t * 0.9, t * 0.35, vis, 0.85f);
@@ -577,7 +602,7 @@ final class MapPanel extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         drawVignette(g);
         hits.clear();
-        drawHighlights(g); seg[2] += System.nanoTime() - tm; tm = System.nanoTime();
+        drawHighlights(g); drawFlashes(g); drawBrush(g); seg[2] += System.nanoTime() - tm; tm = System.nanoTime();
         drawLabels(g); seg[3] += System.nanoTime() - tm; tm = System.nanoTime();
         drawCities(g); seg[4] += System.nanoTime() - tm; tm = System.nanoTime();
         drawCapitals(g);
@@ -585,6 +610,7 @@ final class MapPanel extends JPanel {
         drawArmies(g); drawNukes(g); seg[5] += System.nanoTime() - tm; tm = System.nanoTime();
         if (mode == Mode.INTEL) drawLegend(g);
         drawControls(g);
+        drawBrushBar(g);
         drawTooltip(g);
         drawToasts(g); seg[6] += System.nanoTime() - tm; tm = System.nanoTime();
         if (showPerf) { g.setFont(Fonts.ui(12.5f)); g.setColor(new Color(0, 0, 0, 170)); g.fillRoundRect(10, 10, 640, 24, 8, 8); g.setColor(new Color(150, 255, 170)); g.drawString(perf + String.format("   paint %.1f ms", paintNs / 1e6 / Math.max(1, paints)), 18, 27); }
@@ -611,10 +637,31 @@ final class MapPanel extends JPanel {
         g.fillRect(0, 0, W, 120);
         g.setPaint(new GradientPaint(0, H - 150, new Color(4, 8, 14, 0), 0, H, new Color(4, 8, 14, 140)));
         g.fillRect(0, H - 150, W, 150);
-        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 90), 100, 0, new Color(4, 8, 14, 0)));
-        g.fillRect(0, 120, 100, Math.max(0, H - 270));
-        g.setPaint(new GradientPaint(W - 100, 0, new Color(4, 8, 14, 0), W, 0, new Color(4, 8, 14, 90)));
-        g.fillRect(W - 100, 120, 100, Math.max(0, H - 270));
+        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 70), 100, 0, new Color(4, 8, 14, 0)));
+        g.fillRect(0, 0, 100, H);
+        g.setPaint(new GradientPaint(W - 100, 0, new Color(4, 8, 14, 0), W, 0, new Color(4, 8, 14, 70)));
+        g.fillRect(W - 100, 0, 100, H);
+    }
+
+    /** A province that changes hands flares white and settles into its new colour. */
+    private void drawFlashes(Graphics2D g) {
+        if (flashes.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        AffineTransform old = g.getTransform();
+        g.translate(ox, oy); g.scale(zoom, zoom);
+        for (Iterator<long[]> it = flashes.iterator(); it.hasNext(); ) {
+            long[] f = it.next();
+            double age = (now - f[1]) / 1400.0;
+            if (age >= 1) { it.remove(); continue; }
+            int p = (int) f[0];
+            double k = Math.pow(1 - age, 1.6);
+            g.setColor(new Color(255, 250, 225, (int) (170 * k)));
+            g.fill(shapes.fill[p]);
+            g.setStroke(new BasicStroke((float) ((2 + 5 * k) / zoom), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g.setColor(new Color(255, 214, 110, (int) (230 * k)));
+            g.draw(shapes.fill[p]);
+        }
+        g.setTransform(old);
     }
 
     private void drawHighlights(Graphics2D g) {
@@ -666,12 +713,48 @@ final class MapPanel extends JPanel {
             Rectangle label = new Rectangle((int) sx + 6, (int) sy - 9, sp.textW() + 4, 15);
             boolean room = true;
             for (Rectangle p : placed) if (p.intersects(label)) { room = false; break; }
+            if (zoom >= 7) {
+                int rad = (int) Math.max(6, Math.min(46, (5 + Math.sqrt(c.population() / 1e6) * 7) * Math.min(1.7, zoom / 11.0 + 0.3)));
+                BufferedImage cs = citySprite(c, rad / 3 * 3);
+                g.drawImage(cs, (int) Math.round(sx) - cs.getWidth() / 2, (int) Math.round(sy) - cs.getHeight() / 2, null);
+            }
             drawCityDot(g, sx, sy, r, c.capital());
             if (!room && !c.capital()) continue;
             placed.add(label);
             g.drawImage(sp.img(), (int) Math.round(sx + 7) - sp.padX(), (int) Math.round(sy + 4) - sp.baseline(), null);
             shown++;
         }
+    }
+
+    private final Map<String, BufferedImage> citySprites = new HashMap<>();
+
+    /** Top-down roofs scattered around the city centre, thinning toward the edge. Cached per city and size. */
+    private BufferedImage citySprite(MapExtras.City c, int radius) {
+        String key = c.name() + "|" + radius;
+        BufferedImage hit = citySprites.get(key);
+        if (hit != null) return hit;
+        int d = radius * 2 + 8;
+        BufferedImage img = new BufferedImage(d, d, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        java.util.Random rnd = new java.util.Random(c.name().hashCode());
+        int n = (int) (radius * radius * 0.30) + 8;
+        for (int i = 0; i < n; i++) {
+            double ang = rnd.nextDouble() * Math.PI * 2, dist = Math.pow(rnd.nextDouble(), 0.8) * radius;
+            double bx = d / 2.0 + Math.cos(ang) * dist, by = d / 2.0 + Math.sin(ang) * dist * 0.85;
+            double bw = 2 + rnd.nextInt(4) + (1 - dist / radius) * 2, bh = 2 + rnd.nextInt(4) + (1 - dist / radius) * 2;
+            int tone = 150 + rnd.nextInt(70);
+            AffineTransform at = g.getTransform();
+            g.translate(bx, by); g.rotate(Math.round(rnd.nextDouble() * 4) * Math.PI / 8 + 0.1);
+            g.setColor(new Color(0, 0, 0, 90)); g.fill(new Rectangle2D.Double(-bw / 2 + 1, -bh / 2 + 1.4, bw, bh));
+            g.setColor(new Color(tone, tone - 14, tone - 34, 235)); g.fill(new Rectangle2D.Double(-bw / 2, -bh / 2, bw, bh));
+            g.setColor(new Color(60, 44, 30, 150)); g.setStroke(new BasicStroke(0.6f)); g.draw(new Rectangle2D.Double(-bw / 2, -bh / 2, bw, bh));
+            g.setTransform(at);
+        }
+        g.dispose();
+        if (citySprites.size() > 300) citySprites.clear();
+        citySprites.put(key, img);
+        return img;
     }
 
     private void drawCityDot(Graphics2D g, double x, double y, double r, boolean capital) {
@@ -1012,6 +1095,135 @@ final class MapPanel extends JPanel {
         g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 115);
     }
 
+    // ------------------------------------------------------------------ peace brush: paint the provinces you want
+    private int brushTarget = -1, brushRadius = 46;
+    private final Set<Integer> brushSel = new LinkedHashSet<>();
+    private final List<Integer> brushCandidates = new ArrayList<>();
+    private final List<Rectangle> brushRects = new ArrayList<>();
+    private java.util.function.Consumer<Set<Integer>> brushPropose;
+    private Runnable brushCancel;
+    private String brushVerdict = "Paint the provinces you want to take.";
+    private Color brushVerdictColor = Ui.MUTED;
+
+    boolean brushActive() { return brushTarget >= 0; }
+
+    /** Enters brush mode: left-drag paints the target's provinces into the demand, right-drag rubs them out. */
+    void startBrush(int target, java.util.function.Consumer<Set<Integer>> propose, Runnable cancel) {
+        brushTarget = target; brushPropose = propose; brushCancel = cancel;
+        brushSel.clear(); brushCandidates.clear();
+        for (int p = 0; p < w.provinces.size(); p++) if (!w.provinces.get(p).sea && gs.owner[p] == target) brushCandidates.add(p);
+        selProv = -1; selArmy = -1; onSelect.run();
+        updateBrushVerdict();
+        repaint();
+    }
+
+    /** Screenshot hook: paint a province into the demand as if the brush had passed over it. */
+    void debugBrushPaint(int id) { if (brushCandidates.contains(id)) { brushSel.add(id); updateBrushVerdict(); } }
+
+    void endBrush() { brushTarget = -1; brushSel.clear(); brushCandidates.clear(); brushRects.clear(); repaint(); }
+
+    void cancelBrush() { Runnable c = brushCancel; endBrush(); if (c != null) c.run(); }
+
+    Set<Integer> brushSelection() { return new LinkedHashSet<>(brushSel); }
+
+    private void paintBrush(Point p, boolean erase) {
+        int under = provinceAt(p.x, p.y);
+        boolean changed = false;
+        for (int id : brushCandidates) {
+            Point2D.Double s = screen(id);
+            boolean hit = id == under || Math.hypot(s.x - p.x, s.y - p.y) <= brushRadius;
+            if (!hit) continue;
+            changed |= erase ? brushSel.remove(id) : brushSel.add(id);
+        }
+        if (changed) { Audio.get().play(Synth.Sfx.CLICK); updateBrushVerdict(); repaint(); }
+    }
+
+    private void updateBrushVerdict() {
+        if (brushSel.isEmpty()) { brushVerdict = "Paint the provinces you want to take."; brushVerdictColor = Ui.MUTED; return; }
+        warfare.core.Peace.Talk t = gs.assessPeace(gs.player, brushTarget, warfare.core.Peace.Term.DEMAND, brushSel);
+        boolean capital = brushSel.contains(w.nations.get(brushTarget).capital);
+        String n = brushSel.size() + (brushSel.size() == 1 ? " province" : " provinces") + (capital ? " incl. capital" : "");
+        if (t.accepted) { brushVerdict = n + " - they would accept"; brushVerdictColor = Ui.GREEN; }
+        else if (t.counterDemand != null) { brushVerdict = n + " - too much, but they would give " + t.counterDemand.size(); brushVerdictColor = Ui.AMBER; }
+        else { brushVerdict = n + " - they would refuse"; brushVerdictColor = Ui.RED; }
+    }
+
+    private int brushBarAt(Point p) { for (int i = 0; i < brushRects.size(); i++) if (brushRects.get(i).contains(p)) return i; return -1; }
+
+    private void brushAction(int i) {
+        Audio.get().play(Synth.Sfx.CLICK);
+        switch (i) {
+            case 0 -> brushRadius = 22;
+            case 1 -> brushRadius = 46;
+            case 2 -> brushRadius = 90;
+            case 3 -> { for (int id : brushCandidates) if (gs.controller[id] == gs.player) brushSel.add(id); updateBrushVerdict(); }
+            case 4 -> { brushSel.clear(); updateBrushVerdict(); }
+            case 5 -> { if (brushSel.isEmpty()) { toast("Nothing painted", "Paint at least one of their provinces first.", "castle"); break; } Set<Integer> sel = brushSelection(); var cb = brushPropose; endBrush(); if (cb != null) cb.accept(sel); }
+            default -> cancelBrush();
+        }
+        repaint();
+    }
+
+    private void drawBrush(Graphics2D g) {
+        if (!brushActive()) return;
+        AffineTransform old = g.getTransform();
+        g.translate(ox, oy); g.scale(zoom, zoom);
+        for (int id : brushCandidates) {
+            boolean sel = brushSel.contains(id);
+            g.setColor(sel ? new Color(255, 206, 80, 120) : new Color(255, 255, 255, 26));
+            g.fill(shapes.fill[id]);
+            g.setStroke(new BasicStroke((float) ((sel ? 2.2 : 1.0) / zoom)));
+            g.setColor(sel ? new Color(255, 226, 120, 235) : new Color(255, 255, 255, 70));
+            g.draw(shapes.fill[id]);
+        }
+        g.setTransform(old);
+        if (mouse != null && brushBarAt(mouse) < 0) {
+            g.setColor(new Color(255, 255, 255, 36));
+            g.fill(new Ellipse2D.Double(mouse.x - brushRadius, mouse.y - brushRadius, brushRadius * 2.0, brushRadius * 2.0));
+            g.setColor(new Color(255, 236, 160, 230));
+            g.setStroke(new BasicStroke(2f));
+            g.draw(new Ellipse2D.Double(mouse.x - brushRadius, mouse.y - brushRadius, brushRadius * 2.0, brushRadius * 2.0));
+        }
+    }
+
+    /** The brush's control bar, drawn above armies and labels. */
+    private void drawBrushBar(Graphics2D g) {
+        if (!brushActive()) return;
+        brushRects.clear();
+        String title = "PEACE BRUSH  -  take provinces from " + gs.nationName(brushTarget).toUpperCase();
+        int bw = 820, bh = 78, bx = (getWidth() - bw) / 2, by = 86;
+        g.setColor(new Color(0, 0, 0, 110));
+        g.fill(new RoundRectangle2D.Float(bx + 2, by + 5, bw, bh, 10, 10));
+        Tex.plate(g, new RoundRectangle2D.Float(bx, by, bw, bh, 10, 10), Tex.Kind.DARK_LEATHER, 1f);
+        Tex.frame(g, bx + 0.5f, by + 0.5f, bw - 1, bh - 1, 10, true, true);
+        g.setFont(Fonts.label(15f));
+        g.setColor(Ui.GOLD);
+        g.drawString(title, bx + 20, by + 24);
+        g.setFont(Fonts.ui(13f));
+        g.setColor(brushVerdictColor);
+        g.drawString(brushVerdict, bx + 20, by + 66);
+        g.setColor(new Color(220, 210, 190));
+        g.drawString("drag = paint   right-drag = erase   WASD / wheel = move", bx + 20, by + 45);
+        String[] labels = {"S", "M", "L", "OCCUPIED", "CLEAR", "PROPOSE", "CANCEL"};
+        int[] widths = {34, 34, 34, 92, 64, 96, 80};
+        int x = bx + bw - 12;
+        int[] xs = new int[labels.length];
+        for (int i = labels.length - 1; i >= 0; i--) { x -= widths[i]; xs[i] = x; x -= 6; }
+        for (int i = 0; i < labels.length; i++) brushRects.add(new Rectangle(xs[i], by + 38, widths[i], 30));
+        for (int i = 0; i < labels.length; i++) {
+            Rectangle r = brushRects.get(i);
+            boolean on = i < 3 && brushRadius == new int[]{22, 46, 90}[i];
+            boolean hov = mouse != null && r.contains(mouse);
+            RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
+            if (on || i == 5) Tex.plate(g, pill, Tex.Kind.GOLD, hov ? 0.5f : 0.8f);
+            else { Tex.plate(g, pill, Tex.Kind.LEATHER, 0.9f); if (hov) { g.setColor(new Color(255, 236, 190, 50)); g.fill(pill); } }
+            g.setColor(new Color(255, 236, 190, hov ? 180 : 90)); g.setStroke(new BasicStroke(1f)); g.draw(pill);
+            g.setFont(Fonts.label(13.5f));
+            g.setColor(on || i == 5 ? new Color(40, 26, 8) : Color.WHITE);
+            g.drawString(labels[i], r.x + (r.width - g.getFontMetrics().stringWidth(labels[i])) / 2, r.y + 20);
+        }
+    }
+
     // ------------------------------------------------------------------ input
     /** The province under a screen point. The pick map is coarse (one pixel per map unit), so close up the vector shapes decide. */
     private int provinceAt(int sx, int sy) {
@@ -1026,6 +1238,7 @@ final class MapPanel extends JPanel {
     }
 
     private void click(MouseEvent e) {
+        if (brushActive()) { int b = brushBarAt(e.getPoint()); if (b >= 0) brushAction(b); return; }
         if (tutorial != null && tutorial.click(e.getPoint())) { repaint(); return; }
         boolean left = SwingUtilities.isLeftMouseButton(e), right = SwingUtilities.isRightMouseButton(e);
         if (left) {
@@ -1147,7 +1360,7 @@ final class MapPanel extends JPanel {
 
     /** Small info card that follows the cursor: who owns the province under it and how much we actually know. */
     private void drawTooltip(Graphics2D g) {
-        if (mouse == null || hoverProv < 0 || hoverOverlay >= 0 || dragged) return;
+        if (mouse == null || hoverProv < 0 || hoverOverlay >= 0 || dragged || brushActive()) return;
         WorldData.ProvinceInfo pi = w.provinces.get(hoverProv);
         Intel in = gs.intelOf(gs.player);
         int ko = pi.sea ? -1 : in.knownOwner[hoverProv];

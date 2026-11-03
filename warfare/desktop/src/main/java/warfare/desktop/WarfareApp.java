@@ -272,6 +272,16 @@ public final class WarfareApp {
                     }
                 }
             }
+            if (o.containsKey("brush")) {
+                int foe = world.nationByTag.get(foeTag);
+                gs.warStart[me][foe] = gs.warStart[foe][me] = gs.day - 90;
+                ui.map.startBrush(foe, sel -> {}, () -> {});
+                final int centre = fp >= 0 ? fp : world.nations.get(me).capital;
+                List<Integer> mine = new ArrayList<>();
+                for (int p = 0; p < world.provinces.size(); p++) if (!world.provinces.get(p).sea && gs.owner[p] == foe) mine.add(p);
+                mine.sort(java.util.Comparator.comparingDouble(p -> gs.dist(centre, p)));
+                for (int i = 0; i < Math.min(Integer.parseInt(o.get("brush")), mine.size()); i++) ui.map.debugBrushPaint(mine.get(i));
+            }
             if (o.containsKey("nukefx")) {
                 int target = world.nations.get(world.nationByTag.getOrDefault(foeTag, me)).capital;
                 if (o.get("nukefx").equals("flight")) { gs.nukesInFlight.add(new int[]{me, target, gs.day + 1}); ui.map.debugMissileAge(850); }

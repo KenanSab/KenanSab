@@ -17,14 +17,15 @@ import java.util.stream.IntStream;
  *   <li>{@link #image}: unlit terrain colours on land, depth-graded ocean with shelf contours and coastal foam;</li>
  *   <li>{@link #relief}: sun lighting (black shadow / white light with alpha) drawn <em>over</em> the political colours so mountains stay three-dimensional in every map mode;</li>
  *   <li>{@link #seaMask}: coverage of open water (reduced resolution) used to confine the animated waves;</li>
- *   <li>{@link #shoreA}, {@link #shoreB}: two bands of surf at different distances from the coast, pulsed in antiphase.</li>
+ *   <li>{@link #shoreA}, {@link #shoreB}: two bands of surf at different distances from the coast, pulsed in antiphase;</li>
+ *   <li>{@link #snow}: where snow can lie (high latitudes, high ground); the season decides how much of it does.</li>
  * </ul>
  * The result is baked to PNG (assets/map/basemap.png etc.) by {@code --basemap}; at runtime it is only loaded.
  */
 final class Basemap {
     static final double PX_PER_UNIT = 1.5;
     static final double MASK_PX_PER_UNIT = 0.75;
-    final BufferedImage image, relief, seaMask, shoreA, shoreB;
+    final BufferedImage image, relief, seaMask, shoreA, shoreB, snow;
 
     private static final int[] TERRAIN = {
             0x7F8D4A,   // plains
@@ -39,13 +40,13 @@ final class Basemap {
 
     static boolean baked(Path dir) {
         if (dir == null) return false;
-        for (String f : new String[]{"basemap", "relief", "seamask", "shore1", "shore2"}) if (!dir.resolve(f + ".png").toFile().exists()) return false;
+        for (String f : new String[]{"basemap", "relief", "seamask", "shore1", "shore2", "snow"}) if (!dir.resolve(f + ".png").toFile().exists()) return false;
         return true;
     }
 
     /** Loads the baked underlay when present, otherwise computes it (several seconds). */
     Basemap(MapShapes shapes, WorldData w, Path dir) {
-        BufferedImage[] out = new BufferedImage[5];
+        BufferedImage[] out = new BufferedImage[6];
         if (baked(dir) && !Boolean.getBoolean("warfare.rebake")) {
             try {
                 out[0] = convert(ImageIO.read(dir.resolve("basemap.png").toFile()), BufferedImage.TYPE_INT_RGB);
@@ -53,10 +54,11 @@ final class Basemap {
                 out[2] = convert(ImageIO.read(dir.resolve("seamask.png").toFile()), BufferedImage.TYPE_INT_ARGB);
                 out[3] = convert(ImageIO.read(dir.resolve("shore1.png").toFile()), BufferedImage.TYPE_INT_ARGB);
                 out[4] = convert(ImageIO.read(dir.resolve("shore2.png").toFile()), BufferedImage.TYPE_INT_ARGB);
+                out[5] = convert(ImageIO.read(dir.resolve("snow.png").toFile()), BufferedImage.TYPE_INT_ARGB);
             } catch (Exception e) { out[0] = null; }
         }
         if (out[0] == null) out = build(shapes, w);
-        image = out[0]; relief = out[1]; seaMask = out[2]; shoreA = out[3]; shoreB = out[4];
+        image = out[0]; relief = out[1]; seaMask = out[2]; shoreA = out[3]; shoreB = out[4]; snow = out[5];
     }
 
     void bake(Path dir) throws Exception {
@@ -65,6 +67,7 @@ final class Basemap {
         ImageIO.write(seaMask, "png", dir.resolve("seamask.png").toFile());
         ImageIO.write(shoreA, "png", dir.resolve("shore1.png").toFile());
         ImageIO.write(shoreB, "png", dir.resolve("shore2.png").toFile());
+        ImageIO.write(snow, "png", dir.resolve("snow.png").toFile());
     }
 
     private static BufferedImage convert(BufferedImage src, int type) {
@@ -195,7 +198,23 @@ final class Basemap {
                 ao[y * mw + x] = ((int) Math.max(0, Math.min(255, va * 235)) << 24) | 0xFFFFFF;
                 bo[y * mw + x] = ((int) Math.max(0, Math.min(255, vb * 200)) << 24) | 0xFFFFFF;
             }
-        return new BufferedImage[]{img, rel, sm, sa, sb};
+        // snow potential: cold latitudes, high ground, broken up by noise (0.75 px per unit like the other masks)
+        BufferedImage sn = new BufferedImage(mw, mh, BufferedImage.TYPE_INT_ARGB);
+        int[] sno = ((DataBufferInt) sn.getRaster().getDataBuffer()).getData();
+        IntStream.range(0, mh).parallel().forEach(y -> {
+            for (int x = 0; x < mw; x++) {
+                int sx = Math.min(W - 1, x * 2), sy = Math.min(H - 1, y * 2), i = sy * W + sx;
+                double land = Math.min(1, mask[i] * 1.2);
+                if (land < 0.02) continue;
+                double lat = Math.abs(84 - sy * 0.1);
+                double noise = fbm(sx / 34.0 + 300, sy / 34.0 + 120, 4);
+                double cold = smooth(36, 66, lat) * (0.5 + 0.9 * noise);
+                double high = mtnSoft[i] * smooth(0, 38, lat) * (0.35 + 0.9 * smooth(0.55, 1.1, height[i]));
+                double pot = Math.max(0, Math.min(1, cold + high));
+                sno[y * mw + x] = ((int) (pot * land * 255) << 24) | 0xEEF4FC;
+            }
+        });
+        return new BufferedImage[]{img, rel, sm, sa, sb, sn};
     }
 
     private static double smooth(double a, double b, double v) {

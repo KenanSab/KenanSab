@@ -481,6 +481,10 @@ public final class GameState implements Serializable {
     /** How {@code b} would answer {@code a}'s proposal, without doing anything. */
     public Peace.Talk assessPeace(int a, int b, Peace.Term term) { return Peace.assess(this, a, b, term); }
 
+    public Peace.Talk assessPeace(int a, int b, Peace.Term term, java.util.Set<Integer> demand) { return Peace.assess(this, a, b, term, demand); }
+
+    public Result negotiatePeace(int a, int b, Peace.Term term, java.util.Set<Integer> demand) { return Peace.negotiate(this, a, b, term, demand); }
+
     /** What the war looks like to {@code a}: land held, armies, exhaustion. */
     public Peace.Situation peaceSituation(int a, int b) { return Peace.situation(this, a, b); }
 

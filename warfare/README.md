@@ -57,7 +57,9 @@ timings, `--shot out.png TAG DAYS FOE MODE TAB` renders a headless screenshot, `
 ## Screenshots
 
 ![Europe at war](docs/screens/map_europe.jpg)
-![Close-up with rivers, cities and region names](docs/screens/map_closeup.jpg)
+![The opening view: rivers, cities, region names, fine terrain](docs/screens/map_closeup.jpg)
+![Winter comes to the north](docs/screens/map_winter.jpg)
+![Peace brush: paint the provinces you want](docs/screens/peace_brush.jpg)
 ![Terrain mode](docs/screens/map_terrain.jpg)
 ![Start screen](docs/screens/start_screen.jpg)
 ![Economy window](docs/screens/ui_economy.jpg)

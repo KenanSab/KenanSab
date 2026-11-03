@@ -218,6 +218,7 @@ final class GameUi extends JPanel {
     }
 
     private void escape() {
+        if (map.brushActive()) { map.cancelBrush(); return; }
         if (modals.isOpen()) { modals.pop(); return; }
         if (selectionCard.isVisible()) { clearSelection(); return; }
         if (openWindow != null) { pick(openWindow); return; }

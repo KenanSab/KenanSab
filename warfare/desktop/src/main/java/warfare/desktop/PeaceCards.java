@@ -30,15 +30,27 @@ final class PeaceCards {
         terms.add(Peace.Term.REPARATIONS); labels.add("Demand reparations (they pay about " + s.reparations() + ")");
         if (s.tribute() >= 20) { terms.add(Peace.Term.TRIBUTE); labels.add("Offer tribute (you pay " + s.tribute() + ")"); }
         if (s.returnable() > 0) { terms.add(Peace.Term.RETURN); labels.add("Return " + s.returnable() + " captured provinces"); }
+        terms.add(Peace.Term.DEMAND); labels.add("Demand provinces (peace brush)");
         labels.add("Cancel");
-        JComponentHolder.push(ui, "Peace talks", sb.toString(), labels, i -> { if (i < terms.size()) propose(ui, target, terms.get(i)); });
+        JComponentHolder.push(ui, "Peace talks", sb.toString(), labels, i -> {
+            if (i >= terms.size()) return;
+            if (terms.get(i) == Peace.Term.DEMAND) startBrush(ui, target); else propose(ui, target, terms.get(i), java.util.Set.of());
+        });
     }
 
-    static void propose(GameUi ui, int target, Peace.Term term) {
+    /** Hands the map over to the brush; proposing from the brush bar comes back here with the painted provinces. */
+    static void startBrush(GameUi ui, int target) {
+        ui.map.startBrush(target, sel -> propose(ui, target, Peace.Term.DEMAND, sel), () -> {});
+        ui.map.toast("Peace brush", "Paint the provinces you want, then press PROPOSE.", "castle", "PEACE TALKS");
+    }
+
+    static void propose(GameUi ui, int target, Peace.Term term) { propose(ui, target, term, java.util.Set.of()); }
+
+    static void propose(GameUi ui, int target, Peace.Term term, java.util.Set<Integer> demand) {
         GameState gs = ui.gs;
         int me = gs.player;
-        Peace.Talk talk = gs.assessPeace(me, target, term);          // before negotiating: a refusal starts a cooldown that would hide the reasons
-        GameState.Result r = gs.negotiatePeace(me, target, term);
+        Peace.Talk talk = gs.assessPeace(me, target, term, demand);   // before negotiating: a refusal starts a cooldown that would hide the reasons
+        GameState.Result r = gs.negotiatePeace(me, target, term, demand);
         ui.map.refreshColors();
         ui.refresh();
         Audio.get().play(r.ok ? Synth.Sfx.CONFIRM : Synth.Sfx.ERROR);
@@ -51,9 +63,17 @@ final class PeaceCards {
               .append(counter == Peace.Term.TRIBUTE ? "pay " + talk.counterPay + " in tribute." : "return the " + talk.counterPay + " provinces you took from them.");
             labels.add(counter == Peace.Term.TRIBUTE ? "Accept: pay " + talk.counterPay + " tribute" : "Accept: return " + talk.counterPay + " provinces");
         }
+        java.util.Set<Integer> partial = r.ok ? null : talk.counterDemand;
+        if (partial != null) {
+            sb.append("\n\nCounter-offer: they would cede ").append(partial.size()).append(partial.size() == 1 ? " province" : " provinces").append(" of the ").append(demand.size()).append(" you asked for.");
+            labels.add("Accept: take those " + partial.size());
+        }
         labels.add(r.ok ? "Good" : "Close");
         final Peace.Term accept = counter;
-        JComponentHolder.push(ui, r.ok ? "Peace signed" : "Peace refused", sb.toString(), labels, i -> { if (accept != null && i == 0) propose(ui, target, accept); });
+        JComponentHolder.push(ui, r.ok ? "Peace signed" : "Peace refused", sb.toString(), labels, i -> {
+            if (accept != null && i == 0) propose(ui, target, accept);
+            else if (partial != null && i == 0) propose(ui, target, Peace.Term.DEMAND, partial);
+        });
     }
 
     /** Tiny helper so both cards are built the same way. */

@@ -2,8 +2,10 @@ package warfare.core;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Peace negotiations. The side being asked weighs how the war is going for it (territory, armies, exhaustion, stability,
@@ -17,7 +19,8 @@ public final class Peace {
         WHITE("White peace", "End the war on the current front lines."),
         REPARATIONS("Peace with reparations", "They pay you for the war. Harder to get."),
         TRIBUTE("Offer tribute", "You pay them to stop. Easier to get."),
-        RETURN("Return captured provinces", "Give back what you took from them. Much easier to get.");
+        RETURN("Return captured provinces", "Give back what you took from them. Much easier to get."),
+        DEMAND("Demand provinces", "Paint the provinces you want with the peace brush. Each one makes peace harder.");
         public final String label, hint;
         Term(String l, String h) { label = l; hint = h; }
     }
@@ -32,6 +35,7 @@ public final class Peace {
         public final List<String> reasons = new ArrayList<>();
         public Term counter;           // a different set of terms they would accept, if any
         public int counterPay;
+        public Set<Integer> counterDemand;   // for a refused demand: the part of it they would give up
         public String message = "";
     }
 
@@ -65,7 +69,26 @@ public final class Peace {
     private record Factor(String text, double value) {}
 
     /** How {@code b} answers a proposal from {@code a}. No side effects. */
-    public static Talk assess(GameState gs, int a, int b, Term term) {
+    public static Talk assess(GameState gs, int a, int b, Term term) { return assess(gs, a, b, term, Set.of()); }
+
+    /** What it costs {@code b}'s willingness to give up these provinces: dearer if we do not hold them, much dearer for the capital. */
+    public static double demandCost(GameState gs, int a, int b, Set<Integer> demand) {
+        double total = 0;
+        for (int p = 0; p < gs.P; p++) if (gs.owner[p] == b) total += 1 + gs.world.provinces.get(p).pop;
+        total = Math.max(1, total);
+        double cost = 0;
+        for (int p : demand) cost += provinceCost(gs, a, b, p, total);
+        return cost;
+    }
+
+    static double provinceCost(GameState gs, int a, int b, int p, double total) {
+        double v = (1 + gs.world.provinces.get(p).pop) / total;
+        double c = (gs.controller[p] == a ? 0.9 : 2.0) * v * 1.2 + 0.03;
+        if (p == gs.world.nations.get(b).capital) c += 0.5;
+        return c;
+    }
+
+    public static Talk assess(GameState gs, int a, int b, Term term, Set<Integer> demand) {
         Talk t = new Talk();
         if (!gs.war[a][b]) { t.message = "You are not at war."; return t; }
         Situation s = situation(gs, a, b);
@@ -80,6 +103,11 @@ public final class Peace {
         }
         if (term == Term.RETURN && s.returnable() == 0) { t.message = "You hold none of their provinces."; return t; }
         if (term == Term.TRIBUTE && s.tribute() < 20) { t.message = "You cannot afford a tribute."; return t; }
+        if (term == Term.DEMAND) {
+            demand = new LinkedHashSet<>(demand);
+            demand.removeIf(p -> gs.owner[p] != b);
+            if (demand.isEmpty()) { t.message = "Paint at least one of their provinces first."; return t; }
+        }
 
         List<Factor> f = new ArrayList<>();
         double occ = s.youHold() - s.theyHold();
@@ -102,6 +130,8 @@ public final class Peace {
             case REPARATIONS -> f.add(new Factor("You demand reparations", -0.32));
             case TRIBUTE -> f.add(new Factor("You offer them " + s.tribute() + " in tribute", 0.22 + Math.min(0.25, s.tribute() / 800.0)));
             case RETURN -> f.add(new Factor("You return " + s.returnable() + " captured provinces", 0.30 + 0.06 * Math.min(6, s.returnable())));
+            case DEMAND -> f.add(new Factor("You demand " + demand.size() + " province" + (demand.size() == 1 ? "" : "s")
+                    + (demand.contains(gs.world.nations.get(b).capital) ? ", including their capital" : ""), -demandCost(gs, a, b, demand)));
             default -> { }
         }
         double score = 0;
@@ -118,7 +148,19 @@ public final class Peace {
         if (t.accepted) t.message = gs.nationName(b) + " accepts.";
         else {
             t.message = gs.nationName(b) + " refuses" + (term == Term.WHITE ? " a white peace." : ".");
-            if (score > -0.45) {
+            if (term == Term.DEMAND) {
+                double total = 1;
+                for (int p = 0; p < gs.P; p++) if (gs.owner[p] == b) total += 1 + gs.world.provinces.get(p).pop;
+                double room = score + demandCost(gs, a, b, demand);          // how much they could give up at most
+                List<Integer> byCost = new ArrayList<>(demand);
+                final double tot = total;
+                byCost.sort(Comparator.comparingDouble(p -> provinceCost(gs, a, b, p, tot)));
+                Set<Integer> part = new LinkedHashSet<>();
+                double used = 0;
+                for (int p : byCost) { double c = provinceCost(gs, a, b, p, total); if (used + c <= room) { part.add(p); used += c; } }
+                if (!part.isEmpty() && part.size() < demand.size()) t.counterDemand = part;
+            } else
+            if (score > -0.45 && term != Term.DEMAND) {
                 for (Term alt : new Term[]{Term.TRIBUTE, Term.RETURN}) {
                     if (alt == term || (alt == Term.RETURN && s.returnable() == 0) || (alt == Term.TRIBUTE && s.tribute() < 20)) continue;
                     double gain = alt == Term.TRIBUTE ? 0.22 + Math.min(0.25, s.tribute() / 800.0) : 0.30 + 0.06 * Math.min(6, s.returnable());
@@ -133,8 +175,10 @@ public final class Peace {
     private static String pct(double v) { return Math.round(v * 100) + "%"; }
 
     /** Proposes the terms; applies them if accepted, otherwise starts a cooldown. */
-    static GameState.Result negotiate(GameState gs, int a, int b, Term term) {
-        Talk t = assess(gs, a, b, term);
+    static GameState.Result negotiate(GameState gs, int a, int b, Term term) { return negotiate(gs, a, b, term, Set.of()); }
+
+    static GameState.Result negotiate(GameState gs, int a, int b, Term term, Set<Integer> demand) {
+        Talk t = assess(gs, a, b, term, demand);
         if (!gs.war[a][b]) return new GameState.Result(false, t.message);
         if (!t.accepted) {
             if (gs.day >= gs.peaceCooldown[a][b] && t.message.contains("refuses")) {
@@ -151,10 +195,20 @@ public final class Peace {
                 for (int p : gs.world.nations.get(b).provinces)
                     if (gs.owner[p] == a) { gs.owner[p] = gs.controller[p] = b; gs.unrest[p] = Math.min(gs.unrest[p], 20); gs.occupy[p] = 0; }
             }
+            case DEMAND -> {
+                for (int p : demand) {
+                    if (gs.owner[p] != b) continue;
+                    gs.owner[p] = gs.controller[p] = a;
+                    gs.occupy[p] = 0;
+                    gs.unrest[p] = Math.max(gs.unrest[p], 50);               // a province handed over by treaty is restless
+                    if (a == gs.player) gs.stCaptures++;
+                }
+            }
             default -> { }
         }
         gs.makePeace(a, b);
-        Relations.both(gs, a, b, 8);
-        return new GameState.Result(true, "Peace with " + gs.nationName(b) + " (" + term.label.toLowerCase() + ").");
+        Relations.both(gs, a, b, term == Term.DEMAND ? -6 : 8);
+        return new GameState.Result(true, term == Term.DEMAND ? "Peace with " + gs.nationName(b) + ": " + demand.size() + " province" + (demand.size() == 1 ? "" : "s") + " ceded."
+                : "Peace with " + gs.nationName(b) + " (" + term.label.toLowerCase() + ").");
     }
 }
