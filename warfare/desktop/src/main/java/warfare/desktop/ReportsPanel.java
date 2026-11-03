@@ -32,7 +32,7 @@ final class ReportsPanel extends JPanel {
         content.add(Ui.section("News"));
         if (gs.news.isEmpty()) content.add(Ui.label("Quiet so far.", 13f, Ui.MUTED));
         for (int i = gs.news.size() - 1; i >= Math.max(0, gs.news.size() - 40); i--) {
-            JLabel l = Ui.label("<html><div style='width:330px'>" + SidePanels.esc(gs.news.get(i)) + "</div></html>", 12.5f, gs.news.get(i).contains("WAR") || gs.news.get(i).contains("NUCLEAR") ? Ui.RED : Ui.TEXT);
+            JLabel l = Ui.label("<html><div style='width:300px'>" + SidePanels.esc(gs.news.get(i)) + "</div></html>", 12.5f, gs.news.get(i).contains("WAR") || gs.news.get(i).contains("NUCLEAR") ? Ui.RED : Ui.TEXT);
             l.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
             content.add(l);
         }

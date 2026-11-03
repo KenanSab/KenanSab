@@ -63,44 +63,45 @@ final class Tutorial {
     void paint(Graphics2D g, int width, int height) {
         if (!active) return;
         Step s = current();
-        int w = 380, x = 16;
+        int w = 420, x = (width - w) / 2;
         g.setFont(Fonts.ui(13.5f));
         FontMetrics fm = g.getFontMetrics();
-        java.util.List<String> lines = wrap(s.text(), fm, w - 32);
-        int h = 74 + lines.size() * (fm.getHeight() + 1) + 40;
-        int y = height - h - 52;
+        java.util.List<String> lines = wrap(s.text(), fm, w - 36);
+        int h = 74 + lines.size() * (fm.getHeight() + 1) + 46;
+        int y = height - h - 112;
         card = new Rectangle(x, y, w, h);
-        g.setColor(new Color(0, 0, 0, 90));
-        g.fill(new RoundRectangle2D.Float(x + 3, y + 5, w, h, 18, 18));
-        g.setColor(new Color(30, 23, 18, 240));
-        g.fill(new RoundRectangle2D.Float(x, y, w, h, 18, 18));
-        g.setColor(new Color(92, 162, 255, 200));
-        g.setStroke(new BasicStroke(1.6f));
-        g.draw(new RoundRectangle2D.Float(x, y, w, h, 18, 18));
-        g.drawImage(Assets.icon(s.icon(), 34, Ui.ACCENT), x + 16, y + 14, null);
+        Skin.shadow(g, x, y, w, h, 8, 6, 130);
+        RoundRectangle2D body = new RoundRectangle2D.Float(x, y, w, h, 8, 8);
+        Skin.plate(g, body, Skin.Kind.PANEL, 1f);
+        Skin.frame(g, x + 0.5f, y + 0.5f, w - 1, h - 1, 8, true, true);
+        g.drawImage(Assets.icon(s.icon(), 34, Ui.ACCENT), x + 20, y + 18, null);
         g.setFont(Fonts.label(12.5f));
         g.setColor(Ui.MUTED);
-        g.drawString("TUTORIAL  " + (step + 1) + " / " + STEPS.size(), x + 62, y + 24);
+        g.drawString("TUTORIAL  " + (step + 1) + " / " + STEPS.size(), x + 66, y + 28);
         g.setFont(Fonts.title(25f));
         g.setColor(Color.WHITE);
-        g.drawString(s.title().toUpperCase(), x + 62, y + 48);
+        g.drawString(s.title().toUpperCase(), x + 66, y + 52);
+        Skin.rule(g, x + 20, y + 62, w * 0.55f);
         g.setFont(Fonts.ui(13.5f));
-        g.setColor(new Color(214, 222, 238));
-        int ty = y + 76;
-        for (String l : lines) { g.drawString(l, x + 16, ty); ty += fm.getHeight() + 1; }
-        int by = y + h - 36;
-        skip = new Rectangle(x + 16, by, 110, 26);
-        g.setColor(new Color(255, 255, 255, 18));
-        g.fill(new RoundRectangle2D.Float(skip.x, skip.y, skip.width, skip.height, 10, 10));
+        g.setColor(new Color(222, 220, 214));
+        int ty = y + 86;
+        for (String l : lines) { g.drawString(l, x + 20, ty); ty += fm.getHeight() + 1; }
+        int by = y + h - 42;
+        skip = new Rectangle(x + 20, by, 110, 28);
+        RoundRectangle2D sk = new RoundRectangle2D.Float(skip.x, skip.y, skip.width, skip.height, 6, 6);
+        Skin.plate(g, sk, Skin.Kind.RAISED, 1f);
+        g.setColor(Skin.HAIR_STRONG); g.setStroke(new BasicStroke(1f)); g.draw(sk);
         g.setFont(Fonts.label(14f));
         g.setColor(Ui.MUTED);
-        g.drawString("Skip tutorial", skip.x + 14, skip.y + 18);
-        next = new Rectangle(x + w - 126, by, 110, 26);
+        g.drawString("Skip tutorial", skip.x + 14, skip.y + 19);
+        next = new Rectangle(x + w - 130, by, 110, 28);
         boolean last = step == STEPS.size() - 1;
-        g.setColor(s.needsAction() ? new Color(255, 255, 255, 18) : Ui.ACCENT);
-        g.fill(new RoundRectangle2D.Float(next.x, next.y, next.width, next.height, 10, 10));
-        g.setColor(s.needsAction() ? Ui.MUTED : Ui.BG);
-        g.drawString(last ? "Finish" : s.needsAction() ? "Skip step" : "Next", next.x + (last ? 34 : s.needsAction() ? 24 : 38), next.y + 18);
+        RoundRectangle2D nx = new RoundRectangle2D.Float(next.x, next.y, next.width, next.height, 6, 6);
+        Skin.plate(g, nx, s.needsAction() ? Skin.Kind.RAISED : Skin.Kind.GOLD, 1f);
+        g.setColor(s.needsAction() ? Skin.HAIR_STRONG : new Color(122, 90, 34, 210)); g.draw(nx);
+        g.setColor(s.needsAction() ? Ui.MUTED : Wf.INK);
+        String label = last ? "Finish" : s.needsAction() ? "Skip step" : "Next";
+        g.drawString(label, next.x + (next.width - g.getFontMetrics().stringWidth(label)) / 2, next.y + 19);
     }
 
     private static java.util.List<String> wrap(String text, FontMetrics fm, int width) {

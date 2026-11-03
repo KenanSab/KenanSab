@@ -16,6 +16,7 @@ final class Rail extends JPanel {
 
     Rail(Consumer<String> onPick) {
         setOpaque(false);
+        setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 9));
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         add("economy", "Economy", "money", "E", onPick);
         add("diplomacy", "Diplomacy", "tab_diplo", "T", onPick);
@@ -28,12 +29,12 @@ final class Rail extends JPanel {
         Item it = new Item(label, icon, hotkey, () -> onPick.accept(key));
         items.put(key, it);
         super.add(it);
-        super.add(Box.createVerticalStrut(6));
+        super.add(Box.createVerticalStrut(2));
     }
 
     void setActive(String key) { active = key; for (var e : items.entrySet()) e.getValue().repaint(); }
 
-    @Override public Dimension getPreferredSize() { return new Dimension(70, items.size() * 72); }
+    @Override public Dimension getPreferredSize() { return new Dimension(78, items.size() * 62 + 12); }
 
     private final class Item extends JComponent {
         private final String label, icon;
@@ -41,8 +42,8 @@ final class Rail extends JPanel {
 
         Item(String label, String icon, String hotkey, Runnable r) {
             this.label = label; this.icon = icon;
-            setPreferredSize(new Dimension(68, 66));
-            setMaximumSize(new Dimension(68, 66));
+            setPreferredSize(new Dimension(62, 60));
+            setMaximumSize(new Dimension(62, 60));
             setAlignmentX(Component.LEFT_ALIGNMENT);
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setToolTipText(label + "  [" + hotkey + "]");
@@ -58,19 +59,31 @@ final class Rail extends JPanel {
             Wf.quality(g);
             int w = getWidth(), h = getHeight();
             boolean on = items.get(active) == this;
-            g.setColor(new Color(0, 0, 0, 90));
-            g.fill(new RoundRectangle2D.Float(3, 5, w - 4, h - 6, 16, 16));
-            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 8, 8), on ? Tex.Kind.LEATHER : Tex.Kind.WOOD, on ? 0.6f : 1f);
-            if (on) { g.setColor(new Color(236, 192, 92, 50)); g.fill(new RoundRectangle2D.Float(0, 0, w - 3, h - 4, 8, 8)); }
-            Tex.frame(g, 0.5f, 0.5f, w - 4, h - 5, 8, false, on || hover);
-            if (on) { g.setColor(Wf.GOLD); g.fillRoundRect(0, 14, 4, h - 32, 4, 4); }
-            g.drawImage(Assets.icon(icon, 28, on ? Wf.GOLD : hover ? Color.WHITE : new Color(214, 222, 238)), (w - 3 - 28) / 2, 9, null);
-            g.setFont(Fonts.label(12.5f));
+            RoundRectangle2D cell = new RoundRectangle2D.Float(2, 1, w - 4, h - 2, 6, 6);
+            if (on) {
+                g.setPaint(new GradientPaint(0, 0, new Color(226, 187, 102, 52), 0, h, new Color(226, 187, 102, 14)));
+                g.fill(cell);
+                g.setColor(Skin.BRASS_HI);
+                g.fill(new RoundRectangle2D.Float(2, 10, 3, h - 20, 3, 3));
+            } else if (hover) { g.setColor(new Color(255, 255, 255, 18)); g.fill(cell); }
+            g.drawImage(Assets.icon(icon, 26, on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(206, 204, 198)), (w - 26) / 2, 9, null);
+            g.setFont(Fonts.label(11.5f));
             FontMetrics fm = g.getFontMetrics();
             String t = label.toUpperCase();
-            g.setColor(on ? Wf.GOLD : Ui.TEXT);
-            g.drawString(t, (w - 3 - fm.stringWidth(t)) / 2, h - 12);
+            g.setColor(on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(176, 175, 170));
+            g.drawString(t, (w - fm.stringWidth(t)) / 2, h - 11);
             g.dispose();
         }
+    }
+
+    @Override protected void paintComponent(Graphics g0) {
+        Graphics2D g = (Graphics2D) g0.create();
+        Wf.quality(g);
+        int w = getWidth(), h = getHeight();
+        Skin.shadow(g, 0, 0, w - 4, h - 4, 8, 5, 90);
+        RoundRectangle2D dock = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
+        Skin.plate(g, dock, Skin.Kind.BAR, 1f);
+        Skin.frame(g, 0.5f, 0.5f, w - 5, h - 5, 8, false, false);
+        g.dispose();
     }
 }

@@ -18,7 +18,7 @@ import java.util.function.IntConsumer;
 final class Wf {
     private Wf() {}
 
-    static final Color GOLD = new Color(236, 192, 92), GOLD_DARK = new Color(188, 142, 48), INK = new Color(22, 17, 12);
+    static final Color GOLD = new Color(226, 187, 102), GOLD_DARK = new Color(176, 134, 54), INK = new Color(24, 20, 12);
 
     static void quality(Graphics2D g) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -78,36 +78,39 @@ final class Wf {
             quality(g);
             int w = getWidth(), h = getHeight();
             boolean on = isEnabled();
-            Color top, bot, edge, text;
-            switch (kind) {
-                case PRIMARY -> { top = new Color(240, 202, 106); bot = new Color(196, 150, 54); edge = new Color(255, 232, 160, 200); text = INK; }
-                case DANGER -> { top = new Color(150, 52, 46); bot = new Color(110, 34, 32); edge = new Color(255, 120, 100, 120); text = Color.WHITE; }
-                case GHOST -> { top = new Color(255, 255, 255, 10); bot = new Color(255, 255, 255, 4); edge = new Color(255, 255, 255, 30); text = Ui.TEXT; }
-                default -> { top = new Color(79, 63, 50); bot = new Color(56, 45, 35); edge = new Color(255, 255, 255, 38); text = Ui.TEXT; }
-            }
-            if (hoverT > 0.01f && on) { top = brighter(top, 1 + 0.18 * hoverT); bot = brighter(bot, 1 + 0.18 * hoverT); if (kind != Kind.PRIMARY) edge = new Color(236, 192, 92, (int) (40 + 150 * hoverT)); }
-            if (down && on) { top = brighter(top, 0.82); bot = brighter(bot, 0.82); }
             RoundRectangle2D shape = new RoundRectangle2D.Float(0.5f, 0.5f, w - 1, h - 1, 6, 6);
-            if (kind == Kind.GHOST) { g.setPaint(new GradientPaint(0, 0, top, 0, h, bot)); g.fill(shape); }
-            else {
-                g.setPaint(Tex.paint(kind == Kind.PRIMARY ? Tex.Kind.GOLD : kind == Kind.DANGER ? Tex.Kind.LEATHER : Tex.Kind.LEATHER)); g.fill(shape);
-                if (kind == Kind.DANGER) { g.setColor(new Color(150, 40, 34, 170)); g.fill(shape); }
-                g.setPaint(new GradientPaint(0, 0, new Color(255, 240, 210, (int) (34 + 40 * (on ? hoverT : 0))), 0, h, new Color(0, 0, 0, down ? 40 : 100))); g.fill(shape);
+            Color edge, text;
+            if (kind == Kind.GHOST) {
+                g.setColor(new Color(255, 255, 255, (int) (8 + 22 * (on ? hoverT : 0))));
+                g.fill(shape);
+                edge = new Color(255, 255, 255, 30 + (int) (60 * (on ? hoverT : 0)));
+                text = Ui.TEXT;
+            } else {
+                Skin.Kind sk = kind == Kind.PRIMARY ? Skin.Kind.GOLD : kind == Kind.DANGER ? Skin.Kind.DANGER : Skin.Kind.RAISED;
+                Skin.plate(g, shape, sk, down ? 0.2f : 1f);
+                if (hoverT > 0.01f && on) { g.setColor(new Color(255, 255, 255, (int) ((kind == Kind.PRIMARY ? 36 : 22) * hoverT))); g.fill(shape); }
+                if (down && on) { g.setColor(new Color(0, 0, 0, 55)); g.fill(shape); }
+                switch (kind) {
+                    case PRIMARY -> { edge = new Color(122, 90, 34, 210); text = INK; }
+                    case DANGER -> { edge = new Color(255, 130, 110, 100); text = Color.WHITE; }
+                    default -> { edge = new Color(Skin.BRASS.getRed(), Skin.BRASS.getGreen(), Skin.BRASS.getBlue(), (int) (28 + 170 * (on ? hoverT : 0))); text = Ui.TEXT; }
+                }
             }
             g.setColor(edge);
-            g.setStroke(new BasicStroke(1.2f));
+            g.setStroke(new BasicStroke(1f));
             g.draw(shape);
-            if (kind != Kind.GHOST) { g.setColor(new Color(255, 255, 255, 28)); g.drawLine(8, 2, w - 9, 2); }
             String label = getText().toUpperCase();
             FontMetrics fm = g.getFontMetrics(getFont());
             int iw = iconName != null ? 22 : 0, tw = fm.stringWidth(label), total = iw + tw;
             int x = (w - total) / 2, cy = h / 2;
-            if (iconName != null) {
-                Color ic = kind == Kind.PRIMARY ? INK : on ? Ui.TEXT : Ui.MUTED;
-                g.drawImage(Assets.icon(iconName, 18, ic), x, cy - 9, null);
-                x += iw;
-            }
-            g.setFont(getFont());
+            Font f = getFont();
+            int room = w - 16 - iw;
+            while (fm.stringWidth(label) > room && f.getSize2D() > 10.5f) { f = f.deriveFont(f.getSize2D() - 0.5f); fm = g.getFontMetrics(f); }
+            if (fm.stringWidth(label) > room) { while (label.length() > 3 && fm.stringWidth(label + "...") > room) label = label.substring(0, label.length() - 1); label += "..."; }
+            tw = fm.stringWidth(label);
+            x = (w - (iw + tw)) / 2 + iw;
+            if (iconName != null) g.drawImage(Assets.icon(iconName, 18, kind == Kind.PRIMARY ? INK : on ? Ui.TEXT : Ui.MUTED), x - iw, cy - 9, null);
+            g.setFont(f);
             g.setColor(on ? text : Ui.MUTED);
             g.drawString(label, x, cy + fm.getAscent() / 2 - 1);
             g.dispose();
@@ -143,8 +146,10 @@ final class Wf {
             quality(g);
             Rectangle t = trackRect;
             int cy = t.y + t.height / 2, h = 6;
-            g.setColor(new Color(255, 255, 255, 28));
+            g.setColor(new Color(0, 0, 0, 120));
             g.fillRoundRect(t.x, cy - h / 2, t.width, h, h, h);
+            g.setColor(new Color(255, 255, 255, 18));
+            g.drawRoundRect(t.x, cy - h / 2, t.width - 1, h - 1, h, h);
             int fillTo = thumbRect.x + thumbRect.width / 2;
             if (slider.getMinimum() < 0) {                       // centred sliders (e.g. civilian <-> military) fill from the middle
                 int mid = t.x + t.width / 2;
@@ -163,13 +168,15 @@ final class Wf {
             quality(g);
             Rectangle r = thumbRect;
             int d = 16, x = r.x + (r.width - d) / 2, y = r.y + (r.height - d) / 2;
-            g.setColor(new Color(0, 0, 0, 110));
-            g.fill(new Ellipse2D.Float(x + 1, y + 2, d, d));
-            g.setPaint(new GradientPaint(0, y, new Color(250, 244, 226), 0, y + d, new Color(214, 196, 150)));
+            g.setColor(new Color(0, 0, 0, 120));
+            g.fill(new Ellipse2D.Float(x, y + 2, d, d));
+            g.setPaint(new GradientPaint(0, y, new Color(246, 222, 150), 0, y + d, new Color(196, 152, 64)));
             g.fill(new Ellipse2D.Float(x, y, d, d));
-            g.setColor(GOLD_DARK);
-            g.setStroke(new BasicStroke(1.4f));
+            g.setColor(new Color(90, 66, 24, 230));
+            g.setStroke(new BasicStroke(1f));
             g.draw(new Ellipse2D.Float(x + 0.5f, y + 0.5f, d - 1, d - 1));
+            g.setColor(new Color(255, 255, 255, 90));
+            g.fill(new Ellipse2D.Float(x + 4, y + 3, d - 8, 3));
             g.dispose();
         }
         @Override public void paintFocus(Graphics g) {}
@@ -195,14 +202,14 @@ final class Wf {
                 @Override protected void paintComponent(Graphics g0) {
                     Graphics2D g = (Graphics2D) g0.create();
                     quality(g);
-                    g.setColor(Toggle.this.on ? GOLD_DARK : new Color(255, 255, 255, 30));
+                    g.setPaint(Toggle.this.on ? new GradientPaint(0, 2, new Color(224, 184, 96), 0, 22, new Color(176, 134, 54)) : new GradientPaint(0, 2, new Color(26, 27, 30), 0, 22, new Color(44, 45, 49)));
                     g.fillRoundRect(0, 2, 42, 20, 20, 20);
-                    g.setColor(hover ? new Color(255, 255, 255, 90) : new Color(255, 255, 255, 40));
+                    g.setColor(hover ? new Color(255, 255, 255, 90) : new Color(255, 255, 255, 34));
                     g.drawRoundRect(0, 2, 41, 19, 20, 20);
                     int kx = Toggle.this.on ? 22 : 2;
-                    g.setColor(new Color(0, 0, 0, 90));
+                    g.setColor(new Color(0, 0, 0, 110));
                     g.fillOval(kx + 1, 5, 18, 18);
-                    g.setColor(Toggle.this.on ? new Color(255, 240, 200) : new Color(200, 208, 224));
+                    g.setColor(Toggle.this.on ? new Color(255, 250, 235) : new Color(176, 176, 172));
                     g.fillOval(kx, 3, 18, 18);
                     g.dispose();
                 }
@@ -260,22 +267,20 @@ final class Wf {
             Graphics2D g = (Graphics2D) g0.create();
             quality(g);
             int w = getWidth() / labels.length, h = getHeight();
-            g.setColor(new Color(255, 255, 255, 12));
-            g.fillRoundRect(0, 0, getWidth(), h, 12, 12);
+            Skin.plate(g, new RoundRectangle2D.Float(0, 0, getWidth(), h, 8, 8), Skin.Kind.INSET, 1f);
             g.setFont(Fonts.label(13.5f));
             FontMetrics fm = g.getFontMetrics();
             for (int i = 0; i < labels.length; i++) {
                 boolean on = i == selected;
                 if (on) {
-                    g.setPaint(new GradientPaint(0, 0, new Color(240, 202, 106), 0, h, new Color(196, 150, 54)));
-                    g.fillRoundRect(i * w + 2, 2, w - 4, h - 4, 10, 10);
-                } else if (i == hover) { g.setColor(new Color(255, 255, 255, 22)); g.fillRoundRect(i * w + 2, 2, w - 4, h - 4, 10, 10); }
+                    Skin.plate(g, new RoundRectangle2D.Float(i * w + 2, 2, w - 4, h - 4, 6, 6), Skin.Kind.GOLD, 1f);
+                } else if (i == hover) { g.setColor(new Color(255, 255, 255, 20)); g.fillRoundRect(i * w + 2, 2, w - 4, h - 4, 6, 6); }
                 g.setColor(on ? INK : Ui.TEXT);
                 String s = labels[i].toUpperCase();
                 g.drawString(s, i * w + (w - fm.stringWidth(s)) / 2, h / 2 + fm.getAscent() / 2 - 1);
             }
-            g.setColor(new Color(255, 255, 255, 34));
-            g.drawRoundRect(0, 0, getWidth() - 1, h - 1, 12, 12);
+            g.setColor(new Color(255, 255, 255, 30));
+            g.drawRoundRect(0, 0, getWidth() - 1, h - 1, 8, 8);
             g.dispose();
         }
     }
@@ -303,7 +308,7 @@ final class Wf {
             if (r.isEmpty()) return;
             Graphics2D g = (Graphics2D) g0.create();
             quality(g);
-            g.setColor(isThumbRollover() || isDragging ? new Color(236, 192, 92, 190) : new Color(150, 165, 195, 120));
+            g.setColor(isThumbRollover() || isDragging ? new Color(226, 187, 102, 200) : new Color(210, 208, 200, 70));
             g.fillRoundRect(r.x + 2, r.y + 2, r.width - 4, r.height - 4, 8, 8);
             g.dispose();
         }
@@ -364,13 +369,17 @@ final class Wf {
             Graphics2D g = (Graphics2D) g0.create();
             quality(g);
             int w = getWidth(), h = getHeight();
-            g.setColor(new Color(0, 0, 0, 90));
-            g.fill(new RoundRectangle2D.Float(3, 6, w - 4, h - 4, 10, 10));
-            RoundRectangle2D body = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 10, 10);
-            Tex.plate(g, body, Tex.Kind.DARK_LEATHER, 1f);
-            g.setColor(new Color(0, 0, 0, 70));
-            g.fillRect(8, 54, w - 20, 1);
-            Tex.frame(g, 0.5f, 0.5f, w - 5, h - 5, 10, true, false);
+            Skin.shadow(g, 2, 2, w - 8, h - 8, 8, 6, 120);
+            RoundRectangle2D body = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
+            Skin.plate(g, body, Skin.Kind.PANEL, 1f);
+            // header band
+            Shape old = g.getClip();
+            g.clip(body);
+            g.setPaint(new GradientPaint(0, 0, new Color(255, 255, 255, 14), 0, 56, new Color(255, 255, 255, 0)));
+            g.fillRect(0, 0, w, 56);
+            g.setClip(old);
+            Skin.rule(g, 16, 55, Math.max(60, (w - 4) * 0.62f));
+            Skin.frame(g, 0.5f, 0.5f, w - 5, h - 5, 8, true, false);
             g.dispose();
         }
 
@@ -389,9 +398,11 @@ final class Wf {
             @Override protected void paintComponent(Graphics g0) {
                 Graphics2D g = (Graphics2D) g0.create();
                 quality(g);
-                g.setColor(hover ? new Color(232, 90, 78, 200) : new Color(255, 255, 255, 22));
-                g.fillOval(1, 1, 28, 28);
-                g.setColor(Color.WHITE);
+                g.setColor(hover ? new Color(224, 96, 84, 220) : new Color(255, 255, 255, 16));
+                g.fill(new RoundRectangle2D.Float(2, 2, 26, 26, 8, 8));
+                g.setColor(new Color(255, 255, 255, hover ? 70 : 28));
+                g.draw(new RoundRectangle2D.Float(2.5f, 2.5f, 25, 25, 8, 8));
+                g.setColor(hover ? Color.WHITE : new Color(220, 218, 212));
                 g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 g.drawLine(10, 10, 20, 20); g.drawLine(20, 10, 10, 20);
                 g.dispose();
@@ -409,10 +420,10 @@ final class Wf {
         f.putClientProperty("JTextField.placeholderText", placeholder);
         f.putClientProperty("JComponent.roundRect", true);
         f.setFont(Fonts.ui(14f));
-        f.setBackground(new Color(255, 255, 255, 14));
+        f.setBackground(new Color(0, 0, 0, 70));
         f.setForeground(Ui.TEXT);
         f.setCaretColor(GOLD);
-        f.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 40), 1, true), BorderFactory.createEmptyBorder(6, 10, 6, 10)));
+        f.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(255, 255, 255, 34), 1, true), BorderFactory.createEmptyBorder(6, 10, 6, 10)));
         f.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
         return f;
     }

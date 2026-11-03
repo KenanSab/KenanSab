@@ -147,26 +147,25 @@ final class MapPanel extends JPanel {
 
     private void drawToasts(Graphics2D g) {
         long now = System.currentTimeMillis();
-        int y = 78;
+        int y = Hud.BAR_H + 14 + (brushActive() ? 92 : 0);
         for (Toast t : toasts) {
             double life = (t.until - now) / 5200.0;
             float a = (float) Math.max(0, Math.min(1, Math.min(life * 6, (1 - life) * 8)));
-            int w = 330, h = 62, x = getWidth() - w - 14;
+            int w = 360, h = 62, x = getWidth() - w - 14 - rightInset;
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
-            g.setColor(new Color(0, 0, 0, 110));
-            g.fill(new RoundRectangle2D.Float(x + 2, y + 4, w, h, 8, 8));
-            Tex.plate(g, new RoundRectangle2D.Float(x, y, w, h, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
-            Tex.frame(g, x + 0.5f, y + 0.5f, w - 1, h - 1, 8, true, true);
-            g.drawImage(Assets.icon(t.icon, 36, new Color(236, 192, 92)), x + 12, y + 13, null);
+            Skin.shadow(g, x, y, w, h, 8, 5, 110);
+            Skin.plate(g, new RoundRectangle2D.Float(x, y, w, h, 8, 8), Skin.Kind.PANEL, 1f);
+            Skin.frame(g, x + 0.5f, y + 0.5f, w - 1, h - 1, 8, true, true);
+            g.drawImage(Assets.icon(t.icon, 36, Skin.BRASS), x + 14, y + 13, null);
             g.setFont(Fonts.label(12.5f));
-            g.setColor(new Color(236, 192, 92));
+            g.setColor(Skin.BRASS);
             g.drawString(t.header, x + 58, y + 20);
             g.setFont(Fonts.title(21f));
             g.setColor(Color.WHITE);
             g.drawString(t.title.toUpperCase(), x + 58, y + 40);
             g.setFont(Fonts.ui(12f));
-            g.setColor(new Color(170, 182, 206));
+            g.setColor(new Color(178, 178, 172));
             g.drawString(t.text, x + 58, y + 55);
             g.setComposite(old);
             y += h + 8;
@@ -683,7 +682,7 @@ final class MapPanel extends JPanel {
         if (zoom < 4.5) return;
         Intel in = gs.intelOf(gs.player);
         Font f = Fonts.label(11.5f);
-        Color fill = new Color(255, 255, 255, 150), halo = new Color(20, 15, 11, 150);
+        Color fill = new Color(255, 255, 255, 150), halo = new Color(17, 16, 14, 150);
         for (WorldData.ProvinceInfo p : w.provinces) {
             if (p.sea || shapes.bounds[p.id].width * zoom < 56) continue;
             double sx = p.cx * zoom + ox, sy = p.cy * zoom + oy;
@@ -709,7 +708,7 @@ final class MapPanel extends JPanel {
             if (sx < -20 || sy < -20 || sx > getWidth() + 20 || sy > getHeight() + 20) continue;
             if (in.knownOwner[c.province()] < 0) continue;
             double r = c.population() > 8_000_000 ? 4.2 : c.population() > 2_000_000 ? 3.4 : 2.6;
-            Sprites.Sprite sp = Sprites.text(c.name(), font, c.capital() ? new Color(255, 226, 140) : new Color(246, 240, 226), new Color(16, 11, 7, 200), 2.8f, 0);
+            Sprites.Sprite sp = Sprites.text(c.name(), font, c.capital() ? new Color(255, 226, 140) : new Color(246, 240, 226), new Color(13, 12, 10, 200), 2.8f, 0);
             Rectangle label = new Rectangle((int) sx + 6, (int) sy - 9, sp.textW() + 4, 15);
             boolean room = true;
             for (Rectangle p : placed) if (p.intersects(label)) { room = false; break; }
@@ -748,7 +747,7 @@ final class MapPanel extends JPanel {
             g.translate(bx, by); g.rotate(Math.round(rnd.nextDouble() * 4) * Math.PI / 8 + 0.1);
             g.setColor(new Color(0, 0, 0, 90)); g.fill(new Rectangle2D.Double(-bw / 2 + 1, -bh / 2 + 1.4, bw, bh));
             g.setColor(new Color(tone, tone - 14, tone - 34, 235)); g.fill(new Rectangle2D.Double(-bw / 2, -bh / 2, bw, bh));
-            g.setColor(new Color(60, 44, 30, 150)); g.setStroke(new BasicStroke(0.6f)); g.draw(new Rectangle2D.Double(-bw / 2, -bh / 2, bw, bh));
+            g.setColor(new Color(46, 45, 43, 150)); g.setStroke(new BasicStroke(0.6f)); g.draw(new Rectangle2D.Double(-bw / 2, -bh / 2, bw, bh));
             g.setTransform(at);
         }
         g.dispose();
@@ -760,7 +759,7 @@ final class MapPanel extends JPanel {
     private void drawCityDot(Graphics2D g, double x, double y, double r, boolean capital) {
         int gr = (int) Math.round(r * 3.2);
         g.drawImage(Sprites.glow(gr, 0xFFD678, 110), (int) Math.round(x) - gr, (int) Math.round(y) - gr, null);
-        g.setColor(new Color(20, 14, 8, 230));
+        g.setColor(new Color(16, 15, 13, 230));
         g.fill(new Ellipse2D.Double(x - r - 1.2, y - r - 1.2, 2 * r + 2.4, 2 * r + 2.4));
         g.setColor(capital ? new Color(255, 214, 90) : new Color(255, 244, 214));
         g.fill(new Ellipse2D.Double(x - r, y - r, 2 * r, 2 * r));
@@ -835,7 +834,7 @@ final class MapPanel extends JPanel {
             g.setColor(lost ? new Color(200, 60, 52) : mine ? new Color(255, 214, 90) : new Color(245, 245, 250));
             g.fill(star);
             g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setColor(new Color(22, 17, 12, 235));
+            g.setColor(new Color(19, 18, 16, 235));
             g.draw(star);
             capRects.add(new Rectangle((int) (s.x - r - 5), (int) (cy - r - 5), (int) (2 * r + 10), (int) (2 * r + 10)));
             capNations.add(n.index);
@@ -934,7 +933,7 @@ final class MapPanel extends JPanel {
         g.setColor(new Color(0, 0, 0, 60));
         g.fill(new RoundRectangle2D.Double(x - 1, y + 2, fw + 4, fh + ph / 2.0 + 4, 9, 9));
         // frame: gold for our own forces, dark steel for everyone else
-        Color frame = own ? new Color(238, 196, 96) : new Color(36, 28, 20, 240);
+        Color frame = own ? new Color(238, 196, 96) : new Color(30, 29, 27, 240);
         g.setColor(frame);
         g.fill(new RoundRectangle2D.Double(x - 2, y - 2, fw + 4, fh + 4, 8, 8));
         g.drawImage(Assets.flag(nation, fw), x, y, null);
@@ -947,7 +946,7 @@ final class MapPanel extends JPanel {
         }
         // number plate
         int px = (W - pw) / 2, py = y + fh - 1;
-        g.setPaint(new GradientPaint(0, py, new Color(52, 42, 32, 245), 0, py + ph, new Color(20, 15, 11, 248)));
+        g.setPaint(new GradientPaint(0, py, new Color(44, 43, 41, 245), 0, py + ph, new Color(17, 16, 14, 248)));
         g.fill(new RoundRectangle2D.Double(px, py, pw, ph, ph, ph));
         g.setColor(own ? new Color(238, 196, 96, 230) : new Color(255, 255, 255, 90));
         g.setStroke(new BasicStroke(1.2f));
@@ -1004,7 +1003,7 @@ final class MapPanel extends JPanel {
             double x = cx + Math.sin(ph * 3.1) * 14 + Math.sin(life * 6 + ph) * 4, y = cy - life * 34;
             float a = (float) Math.max(0, 1 - life);
             if (i % 3 == 0) {
-                g.setColor(new Color(40, 34, 30, (int) (110 * a)));
+                g.setColor(new Color(36, 35, 33, (int) (110 * a)));
                 double r = 4 + life * 9;
                 g.fill(new Ellipse2D.Double(x - r, y - r - 6, 2 * r, 2 * r));
             } else {
@@ -1079,7 +1078,7 @@ final class MapPanel extends JPanel {
                     new Color[]{new Color(255, 248, 210, (int) (255 * Math.max(0, 1 - t * 0.95))), new Color(255, 140, 34, (int) (235 * Math.max(0, 1 - t * 0.9))), new Color(150, 36, 10, 0)}));
             g.fill(new Ellipse2D.Double(c.x - fr, c.y - fr, 2 * fr, 2 * fr));
             double sr = 18 + 70 * ease, sy = c.y - 20 - 70 * ease;
-            g.setColor(new Color(36, 30, 28, (int) (170 * Math.min(1, t * 3) * (1 - t))));
+            g.setColor(new Color(33, 32, 30, (int) (170 * Math.min(1, t * 3) * (1 - t))));
             g.fill(new Ellipse2D.Double(c.x - sr, sy - sr * 0.8, 2 * sr, 1.6 * sr));
         }
     }
@@ -1089,8 +1088,8 @@ final class MapPanel extends JPanel {
         g.setFont(Fonts.label(13f));
         FontMetrics fm = g.getFontMetrics();
         int wd = fm.stringWidth(t) + 24;
-        Tex.plate(g, new RoundRectangle2D.Float((getWidth() - wd) / 2f, getHeight() - 132, wd, 24, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
-        Tex.frame(g, (getWidth() - wd) / 2f + 0.5f, getHeight() - 131.5f, wd - 1, 23, 8, false, false);
+        Skin.plate(g, new RoundRectangle2D.Float((getWidth() - wd) / 2f, getHeight() - 132, wd, 24, 8, 8), Skin.Kind.PANEL, 1f);
+        Skin.frame(g, (getWidth() - wd) / 2f + 0.5f, getHeight() - 131.5f, wd - 1, 23, 8, false, false);
         g.setColor(new Color(225, 232, 244));
         g.drawString(t, (getWidth() - wd) / 2 + 12, getHeight() - 115);
     }
@@ -1192,10 +1191,9 @@ final class MapPanel extends JPanel {
         brushRects.clear();
         String title = "PEACE BRUSH  -  take provinces from " + gs.nationName(brushTarget).toUpperCase();
         int bw = 820, bh = 78, bx = (getWidth() - bw) / 2, by = 86;
-        g.setColor(new Color(0, 0, 0, 110));
-        g.fill(new RoundRectangle2D.Float(bx + 2, by + 5, bw, bh, 10, 10));
-        Tex.plate(g, new RoundRectangle2D.Float(bx, by, bw, bh, 10, 10), Tex.Kind.DARK_LEATHER, 1f);
-        Tex.frame(g, bx + 0.5f, by + 0.5f, bw - 1, bh - 1, 10, true, true);
+        Skin.shadow(g, bx, by, bw, bh, 10, 5, 110);
+        Skin.plate(g, new RoundRectangle2D.Float(bx, by, bw, bh, 10, 10), Skin.Kind.PANEL, 1f);
+        Skin.frame(g, bx + 0.5f, by + 0.5f, bw - 1, bh - 1, 10, true, true);
         g.setFont(Fonts.label(15f));
         g.setColor(Ui.GOLD);
         g.drawString(title, bx + 20, by + 24);
@@ -1215,11 +1213,11 @@ final class MapPanel extends JPanel {
             boolean on = i < 3 && brushRadius == new int[]{22, 46, 90}[i];
             boolean hov = mouse != null && r.contains(mouse);
             RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
-            if (on || i == 5) Tex.plate(g, pill, Tex.Kind.GOLD, hov ? 0.5f : 0.8f);
-            else { Tex.plate(g, pill, Tex.Kind.LEATHER, 0.9f); if (hov) { g.setColor(new Color(255, 236, 190, 50)); g.fill(pill); } }
+            if (on || i == 5) Skin.plate(g, pill, Skin.Kind.GOLD, hov ? 0.5f : 0.8f);
+            else { Skin.plate(g, pill, Skin.Kind.RAISED, 0.9f); if (hov) { g.setColor(new Color(255, 236, 190, 50)); g.fill(pill); } }
             g.setColor(new Color(255, 236, 190, hov ? 180 : 90)); g.setStroke(new BasicStroke(1f)); g.draw(pill);
             g.setFont(Fonts.label(13.5f));
-            g.setColor(on || i == 5 ? new Color(40, 26, 8) : Color.WHITE);
+            g.setColor(on || i == 5 ? new Color(26, 25, 23) : Color.WHITE);
             g.drawString(labels[i], r.x + (r.width - g.getFontMetrics().stringWidth(labels[i])) / 2, r.y + 20);
         }
     }
@@ -1314,10 +1312,9 @@ final class MapPanel extends JPanel {
         Mode[] modes = Mode.values();
         int bw = 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
-        g.setColor(new Color(0, 0, 0, 100));
-        g.fill(new RoundRectangle2D.Float(x0 + 2, y0 + 4, total, bh + 12, 12, 12));
-        Tex.plate(g, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Tex.Kind.WOOD, 1f);
-        Tex.frame(g, x0 + 0.5f, y0 - 1.5f, total - 1, bh + 11, 12, false, false);
+        Skin.shadow(g, x0, y0, total, bh + 12, 12, 5, 110);
+        Skin.plate(g, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Skin.Kind.BAR, 1f);
+        Skin.frame(g, x0 + 0.5f, y0 - 1.5f, total - 1, bh + 11, 12, false, false);
         g.setFont(Fonts.label(14.5f));
         for (int i = 0; i < modes.length; i++) {
             Rectangle r = new Rectangle(x0 + 10 + i * (bw + gap), y0 + 3, bw, bh);
@@ -1325,14 +1322,14 @@ final class MapPanel extends JPanel {
             boolean on = modes[i] == mode, hov = hoverOverlay == i;
             RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
             if (on) {
-                Tex.plate(g, pill, Tex.Kind.GOLD, 0.8f);
+                Skin.plate(g, pill, Skin.Kind.GOLD, 0.8f);
                 g.setColor(new Color(255, 236, 170, 200)); g.setStroke(new BasicStroke(1.2f)); g.draw(pill);
             } else {
                 g.setColor(hov ? new Color(255, 236, 190, 46) : new Color(0, 0, 0, 70));
                 g.fill(pill);
                 g.setColor(new Color(255, 236, 190, hov ? 110 : 40)); g.setStroke(new BasicStroke(1f)); g.draw(pill);
             }
-            g.setColor(on ? new Color(40, 26, 8) : hov ? Color.WHITE : new Color(232, 222, 202));
+            g.setColor(on ? new Color(26, 25, 23) : hov ? Color.WHITE : new Color(232, 222, 202));
             String label = modes[i].label.replace(" / Vision", "").toUpperCase();
             g.drawString(label, r.x + (r.width - g.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
         }
@@ -1346,10 +1343,9 @@ final class MapPanel extends JPanel {
         for (int i = 0; i < 3; i++) {
             Rectangle r = rs[i];
             boolean hov = hoverOverlay == 10 + i;
-            g.setColor(new Color(0, 0, 0, 100));
-            g.fill(new RoundRectangle2D.Float(r.x + 1.5f, r.y + 3, r.width, r.height, 8, 8));
-            Tex.plate(g, new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8), hov ? Tex.Kind.LEATHER : Tex.Kind.WOOD, 1f);
-            Tex.frame(g, r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1, 8, false, hov);
+            Skin.shadow(g, r.x, r.y, r.width, r.height, 8, 5, 110);
+            Skin.plate(g, new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8), hov ? Skin.Kind.RAISED : Skin.Kind.BAR, 1f);
+            Skin.frame(g, r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1, 8, false, hov);
             if (glyph[i] != null) {
                 g.setFont(Fonts.ui(24f));
                 g.setColor(hov ? Color.WHITE : new Color(240, 228, 204));
@@ -1375,16 +1371,15 @@ final class MapPanel extends JPanel {
         int wd = Math.max(Math.max(fm.stringWidth(l1) + 40, fm.stringWidth(l2)), Math.max(fm.stringWidth(l3), l4 == null ? 0 : fm.stringWidth(l4))) + 28;
         int h = 22 + 18 * (l4 == null ? 3 : 4) + 8;
         int x = Math.min(mouse.x + 18, getWidth() - wd - 8), y = Math.min(mouse.y + 20, getHeight() - h - 8);
-        g.setColor(new Color(0, 0, 0, 110));
-        g.fill(new RoundRectangle2D.Float(x + 2, y + 4, wd, h, 8, 8));
-        Tex.plate(g, new RoundRectangle2D.Float(x, y, wd, h, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
-        Tex.frame(g, x + 0.5f, y + 0.5f, wd - 1, h - 1, 8, false, true);
+        Skin.shadow(g, x, y, wd, h, 8, 5, 110);
+        Skin.plate(g, new RoundRectangle2D.Float(x, y, wd, h, 8, 8), Skin.Kind.PANEL, 1f);
+        Skin.frame(g, x + 0.5f, y + 0.5f, wd - 1, h - 1, 8, false, true);
         if (ko >= 0) g.drawImage(Assets.flag(w.nations.get(ko), 22), x + 10, y + 9, null);
         g.setFont(Fonts.labelBold(16f));
         g.setColor(Color.WHITE);
         g.drawString(l1, x + (ko >= 0 ? 40 : 12), y + 24);
         g.setFont(Fonts.ui(13f));
-        g.setColor(new Color(214, 222, 238));
+        g.setColor(new Color(224, 222, 216));
         int ty = y + 44;
         g.drawString(l2, x + 12, ty); ty += 18;
         g.setColor(in.quality[hoverProv] > 0 ? Ui.GREEN : Ui.AMBER);

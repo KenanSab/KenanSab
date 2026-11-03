@@ -18,7 +18,7 @@ final class SidePanels {
     static JEditorPane html() {
         JEditorPane p = new JEditorPane("text/html", "");
         p.setEditable(false);
-        p.setBackground(new Color(49, 39, 30));
+        p.setBackground(new Color(41, 40, 38));
         return p;
     }
 

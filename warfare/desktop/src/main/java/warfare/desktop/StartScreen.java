@@ -97,8 +97,8 @@ final class StartScreen extends JPanel {
                 Wf.quality(g);
                 g.setColor(new Color(0, 0, 0, 110));
                 g.fill(new RoundRectangle2D.Float(4, 8, getWidth() - 6, getHeight() - 6, 12, 12));
-                Tex.plate(g, new RoundRectangle2D.Float(0, 0, getWidth() - 3, getHeight() - 3, 12, 12), Tex.Kind.DARK_LEATHER, 1f);
-                Tex.frame(g, 0.5f, 0.5f, getWidth() - 4, getHeight() - 4, 12, true, true);
+                Skin.plate(g, new RoundRectangle2D.Float(0, 0, getWidth() - 3, getHeight() - 3, 12, 12), Skin.Kind.PANEL, 1f);
+                Skin.frame(g, 0.5f, 0.5f, getWidth() - 4, getHeight() - 4, 12, true, true);
                 g.dispose();
             }
         };
@@ -191,7 +191,7 @@ final class StartScreen extends JPanel {
                 g.drawImage(clouds, new AffineTransform(2, 0, 0, 2, xx, yy), null);
         g.setComposite(old);
         // grading: dark on the menu side, vignette all round, warm light from the right
-        g.setPaint(new GradientPaint(0, 0, new Color(14, 10, 7, 238), w * 0.60f, 0, new Color(14, 10, 7, 90)));
+        g.setPaint(new GradientPaint(0, 0, new Color(12, 11, 9, 238), w * 0.60f, 0, new Color(12, 11, 9, 90)));
         g.fillRect(0, 0, w, h);
         g.setPaint(new RadialGradientPaint(w * 0.78f, h * 0.38f, Math.max(w, h) * 0.55f, new float[]{0f, 1f}, new Color[]{new Color(255, 214, 140, 46), new Color(255, 214, 140, 0)}));
         g.fillRect(0, 0, w, h);
@@ -270,7 +270,7 @@ final class StartScreen extends JPanel {
             boolean mineEdge = (a1.nation == n.index) != (a2.nation == n.index) && !(a1.sea && a2.sea);
             boolean national = a1.nation != a2.nation && !(a1.sea && a2.sea) && !a1.sea && !a2.sea;
             if (mineEdge && !a1.sea && !a2.sea) { g.setColor(new Color(255, 232, 150, 235)); g.setStroke(new BasicStroke((float) (2.0 / sc), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)); g.draw(sh.arcPath[a]); }
-            else if (national) { g.setColor(new Color(30, 20, 12, 190)); g.setStroke(new BasicStroke((float) (1.2 / sc), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)); g.draw(sh.arcPath[a]); }
+            else if (national) { g.setColor(new Color(22, 21, 19, 190)); g.setStroke(new BasicStroke((float) (1.2 / sc), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)); g.draw(sh.arcPath[a]); }
             else if (!a1.sea && !a2.sea && a1.nation == n.index) { g.setColor(new Color(255, 255, 255, 80)); g.setStroke(new BasicStroke((float) (0.8 / sc))); g.draw(sh.arcPath[a]); }
         }
         g.setTransform(new AffineTransform());

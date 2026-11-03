@@ -98,22 +98,17 @@ public final class WarfareApp {
     static void theme() {
         com.formdev.flatlaf.FlatDarkLaf.setup();
         UIManager.put("defaultFont", Fonts.ui(13f));
-        UIManager.put("Component.arc", 8);
-        UIManager.put("Button.arc", 8);
-        UIManager.put("TabbedPane.selectedBackground", new java.awt.Color(38, 50, 72));
-        UIManager.put("Panel.background", new java.awt.Color(20, 26, 38));
-        UIManager.put("Component.focusColor", new java.awt.Color(120, 170, 240));
-        UIManager.put("TabbedPane.tabHeight", 40);
-        UIManager.put("TabbedPane.selectedBackground", new java.awt.Color(34, 48, 74));
-        UIManager.put("TabbedPane.underlineColor", new java.awt.Color(92, 162, 255));
-        UIManager.put("TabbedPane.selectedForeground", java.awt.Color.WHITE);
-        UIManager.put("TabbedPane.hoverColor", new java.awt.Color(30, 42, 64));
-        UIManager.put("TabbedPane.tabInsets", new java.awt.Insets(4, 10, 4, 10));
+        UIManager.put("Component.arc", 6);
+        UIManager.put("Button.arc", 6);
+        UIManager.put("Panel.background", new java.awt.Color(23, 24, 27));
+        UIManager.put("Component.focusColor", new java.awt.Color(217, 178, 94));
         UIManager.put("ScrollBar.thumbArc", 999);
         UIManager.put("ScrollBar.width", 11);
-        UIManager.put("ScrollBar.thumb", new java.awt.Color(70, 86, 118));
-        UIManager.put("ToolTip.background", new java.awt.Color(10, 16, 28));
-        UIManager.put("ToolTip.foreground", new java.awt.Color(228, 234, 246));
+        UIManager.put("ScrollBar.thumb", new java.awt.Color(120, 119, 114));
+        UIManager.put("ToolTip.background", new java.awt.Color(28, 29, 32));
+        UIManager.put("ToolTip.foreground", new java.awt.Color(238, 236, 230));
+        UIManager.put("ToolTip.border", javax.swing.BorderFactory.createLineBorder(new java.awt.Color(217, 178, 94, 150)));
+        UIManager.put("ToolTip.font", Fonts.ui(12.5f));
     }
 
     static Path findAssets(String[] args) {

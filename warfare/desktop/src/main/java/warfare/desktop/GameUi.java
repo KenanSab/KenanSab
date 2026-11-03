@@ -70,6 +70,7 @@ final class GameUi extends JPanel {
 
         layers.setLayout(new HudLayout());
         layers.add(map, JLayeredPane.DEFAULT_LAYER);
+        layers.add(hud.bar, Integer.valueOf(50));
         for (JComponent c : new JComponent[]{hud.badge, hud.plates, hud.time, rail, selectionCard, news}) layers.add(c, JLayeredPane.PALETTE_LAYER);
         layers.add(modals, JLayeredPane.MODAL_LAYER);
         selectionCard.setVisible(false);
@@ -108,21 +109,23 @@ final class GameUi extends JPanel {
         @Override public void layoutContainer(Container c) {
             int W = c.getWidth(), H = c.getHeight();
             map.setBounds(0, 0, W, H);
-            hud.badge.setBounds(10, 6, 340, 74);
-            int timeW = 46 + 246 + 28;
-            hud.time.setBounds(W - timeW - 8, 14, timeW, 50);
-            int plateX = 360, plateW = Math.max(200, W - timeW - 8 - plateX - 8);
-            hud.plates.setBounds(plateX, 18, plateW, 50);
-            rail.setBounds(10, 92, 70, rail.getPreferredSize().height);
+            int barH = Hud.BAR_H;
+            hud.bar.setBounds(0, 0, W, barH + 10);
+            hud.badge.setBounds(0, 0, 330, barH);
+            int timeW = 206 + 48 + 12;
+            hud.time.setBounds(W - timeW, 0, timeW, barH);
+            int plateX = 330, plateW = Math.max(200, W - timeW - plateX);
+            hud.plates.setBounds(plateX, 0, plateW, barH);
+            rail.setBounds(8, barH + 14, 78, rail.getPreferredSize().height);
             boolean sel = selectionCard.isVisible();
             int selW = 410;
             map.rightInset = sel ? selW + 16 : 0;
-            if (sel) selectionCard.setBounds(W - selW - 6, 72, selW, Math.max(260, H - 72 - 70));
+            if (sel) selectionCard.setBounds(W - selW - 10, barH + 12, selW, Math.max(260, H - barH - 12 - 70));
             Wf.Window w = openWindow == null ? null : windows.get(openWindow);
             if (w != null) {
                 int ww = 420;
-                int avail = W - 92 - (sel ? selW + 16 : 0) - 20;
-                w.setBounds(92, 88, Math.min(ww, Math.max(320, avail)), Math.max(300, H - 88 - 74));
+                int avail = W - 98 - (sel ? selW + 16 : 0) - 20;
+                w.setBounds(98, barH + 14, Math.min(ww, Math.max(320, avail)), Math.max(300, H - barH - 14 - 74));
             }
             int nw = Math.min(600, Math.max(260, W - 900));
             news.setBounds((W - nw) / 2, H - 92, nw, 30);
@@ -143,8 +146,8 @@ final class GameUi extends JPanel {
             int w = getWidth(), h = getHeight();
             g.setColor(new Color(0, 0, 0, 90));
             g.fill(new RoundRectangle2D.Float(2, 4, w - 3, h - 3, 8, 8));
-            Tex.plate(g, new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 8, 8), Tex.Kind.DARK_LEATHER, 1f);
-            Tex.frame(g, 0.5f, 0.5f, w - 2, h - 2, 8, false, false);
+            Skin.plate(g, new RoundRectangle2D.Float(0, 0, w - 1, h - 1, 8, 8), Skin.Kind.PANEL, 1f);
+            Skin.frame(g, 0.5f, 0.5f, w - 2, h - 2, 8, false, false);
             g.drawImage(Assets.icon("tab_reports", 16, Ui.MUTED), 10, 7, null);
             g.setFont(Fonts.ui(13f));
             g.setColor(Ui.TEXT);

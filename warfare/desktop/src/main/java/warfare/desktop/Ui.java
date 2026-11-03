@@ -10,9 +10,9 @@ import java.awt.geom.RoundRectangle2D;
 final class Ui {
     private Ui() {}
 
-    static final Color BG = new Color(29, 23, 17), PANEL = new Color(40, 31, 24), CARD = new Color(55, 44, 34), CARD_HI = new Color(73, 59, 46),
-            ACCENT = new Color(226, 186, 110), GOLD = new Color(236, 192, 92), GREEN = new Color(96, 204, 134), RED = new Color(232, 90, 78),
-            AMBER = new Color(240, 170, 70), TEXT = new Color(242, 236, 222), MUTED = new Color(176, 166, 150), LINE = new Color(255, 255, 255, 28);
+    static final Color BG = new Color(23, 24, 27), PANEL = new Color(31, 32, 35), CARD = new Color(41, 42, 46), CARD_HI = new Color(52, 54, 59),
+            ACCENT = new Color(226, 187, 102), GOLD = new Color(226, 187, 102), GREEN = new Color(111, 203, 142), RED = new Color(229, 103, 90),
+            AMBER = new Color(232, 166, 75), TEXT = new Color(238, 236, 230), MUTED = new Color(158, 158, 153), LINE = new Color(255, 255, 255, 26);
 
     static JLabel label(String text, float size, Color c) {
         JLabel l = new JLabel(text);
@@ -61,10 +61,9 @@ final class Ui {
             Graphics2D g = (Graphics2D) g0.create();
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             RoundRectangle2D cardShape = new RoundRectangle2D.Float(0, 0, getWidth() - 1, getHeight() - 1, 6, 6);
-            Tex.plate(g, cardShape, Tex.Kind.LEATHER, 0.7f);
-            g.setColor(hover ? new Color(255, 230, 170, 36) : new Color(0, 0, 0, 40));
-            g.fill(cardShape);
-            g.setColor(edge);
+            Skin.plate(g, cardShape, Skin.Kind.RAISED, 0.7f);
+            if (hover) { g.setColor(new Color(226, 187, 102, 20)); g.fill(cardShape); }
+            g.setColor(hover && edge.getAlpha() <= 100 ? new Color(226, 187, 102, 120) : edge);
             g.setStroke(new BasicStroke(edge.getAlpha() > 100 ? 2f : 1f));
             g.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 2, getHeight() - 2, 6, 6));
             g.dispose();
