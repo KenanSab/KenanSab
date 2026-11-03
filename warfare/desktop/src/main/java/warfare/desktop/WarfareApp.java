@@ -237,7 +237,7 @@ public final class WarfareApp {
             Settings.tutorial = false;
             ui.setSize(1500, 900);
             layoutAll(ui);
-            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, Double.parseDouble(o.getOrDefault("zoom", "3.0")));
+            ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, Double.parseDouble(o.getOrDefault("zoom", String.valueOf(MapPanel.START_ZOOM))));
             ui.map.setMode(mode);
             if (o.containsKey("tutorial")) { ui.map.tutorial.restart(0); ui.map.tutorial.step = Integer.parseInt(o.get("tutorial")); }
             else ui.map.tutorial.active = false;

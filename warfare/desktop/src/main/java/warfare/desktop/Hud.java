@@ -64,7 +64,7 @@ final class Hud {
 
         Badge(GameState gs, Runnable open) {
             this.gs = gs;
-            setPreferredSize(new Dimension(340, 74));
+            setPreferredSize(new Dimension(370, 74));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             setToolTipText("Your country (C)");
             addMouseListener(new MouseAdapter() {
@@ -90,35 +90,32 @@ final class Hud {
             g.setColor(hover ? new Color(236, 192, 92, 200) : new Color(255, 255, 255, 44));
             g.setStroke(new BasicStroke(1.3f));
             g.draw(new RoundRectangle2D.Float(30.5f, 10.5f, getWidth() - 37, h - 19, 32, 32));
-            // medallion
-            int d = 62, x = 4, y = (h - d) / 2;
+            // flag: a plain rectangle with a gold frame, overlapping the left edge of the plate
+            int fw = 84, fh = 63, fx = 6, fy = (h - fh) / 2;
             g.setColor(new Color(0, 0, 0, 120));
-            g.fill(new Ellipse2D.Float(x + 2, y + 3, d, d));
-            Shape old = g.getClip();
-            g.setClip(new Ellipse2D.Float(x, y, d, d));
-            Image flag = Assets.flag(gs.world.nations.get(gs.player), 96);
-            g.drawImage(flag, x - 14, y - 2, 96, 72, null);
-            g.setClip(old);
-            g.setColor(Wf.GOLD);
-            g.setStroke(new BasicStroke(3f));
-            g.draw(new Ellipse2D.Float(x + 1.5f, y + 1.5f, d - 3, d - 3));
+            g.fill(new RoundRectangle2D.Float(fx + 2, fy + 4, fw, fh, 8, 8));
+            g.setPaint(new GradientPaint(0, fy - 3, new Color(246, 210, 110), 0, fy + fh + 3, new Color(150, 108, 40)));
+            g.fill(new RoundRectangle2D.Float(fx - 3, fy - 3, fw + 6, fh + 6, 9, 9));
+            g.drawImage(Assets.flag(gs.world.nations.get(gs.player), fw), fx, fy, null);
+            g.setPaint(new GradientPaint(0, fy, new Color(255, 255, 255, 70), 0, fy + fh / 2f, new Color(255, 255, 255, 0)));
+            g.fill(new RoundRectangle2D.Float(fx, fy, fw, fh / 2f, 6, 6));
             g.setColor(new Color(22, 17, 12, 200));
             g.setStroke(new BasicStroke(1.2f));
-            g.draw(new Ellipse2D.Float(x - 1, y - 1, d + 2, d + 2));
+            g.draw(new RoundRectangle2D.Float(fx - 3.5f, fy - 3.5f, fw + 7, fh + 7, 9, 9));
             // text
             String nm = gs.nationName(gs.player).toUpperCase();
             float fs = 32f;
             Font nf = Fonts.title(fs);
-            int room = getWidth() - 78 - 18;
+            int room = getWidth() - 104 - 18;
             while (fs > 18f && g.getFontMetrics(nf).stringWidth(nm) > room) { fs -= 1f; nf = Fonts.title(fs); }
             g.setFont(nf);
             g.setColor(new Color(0, 0, 0, 120));
-            g.drawString(nm, 79, 45);
+            g.drawString(nm, 105, 45);
             g.setColor(Color.WHITE);
-            g.drawString(nm, 78, 44);
+            g.drawString(nm, 104, 44);
             g.setFont(Fonts.ui(13f));
             g.setColor(Ui.MUTED);
-            g.drawString(dateText, 80, 62);
+            g.drawString(dateText, 106, 62);
             g.dispose();
         }
     }

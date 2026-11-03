@@ -188,7 +188,7 @@ final class GameUi extends JPanel {
     }
 
     void focusStart() {
-        SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, 3.0); refresh(); });
+        SwingUtilities.invokeLater(() -> { map.centerOn(gs.world.nations.get(gs.player).capital, MapPanel.START_ZOOM); refresh(); });
     }
 
     // ------------------------------------------------------------------ input

@@ -93,14 +93,34 @@ final class MapPanel extends JPanel {
         repaint();
     }
 
-    /** Keeps the world on screen: at most a quarter of the viewport may show empty space beyond the map edge. */
+    /** Keeps the world on screen: zoom stays within its limits and at most a thin strip of empty space shows beyond the map edge. */
     private void clampView() {
         int W = getWidth(), H = getHeight();
         if (W < 2 || H < 2) return;
+        double min = minZoom();
+        if (zoom < min) {                                  // e.g. the window was enlarged: keep the centre where it was
+            double cx = (W / 2.0 - ox) / zoom, cy = (H / 2.0 - oy) / zoom;
+            zoom = min; ox = W / 2.0 - cx * zoom; oy = H / 2.0 - cy * zoom;
+        }
+        if (zoom > MAX_ZOOM) zoom = MAX_ZOOM;
+        if (targetZoom > 0) targetZoom = Math.max(min, Math.min(MAX_ZOOM, targetZoom));
         double mw = w.width * zoom, mh = w.height * zoom;
-        if (mw <= W * 0.5) ox = (W - mw) / 2; else ox = Math.max(W * 0.75 - mw, Math.min(W * 0.25, ox));
-        if (mh <= H * 0.5) oy = (H - mh) / 2; else oy = Math.max(H * 0.75 - mh, Math.min(H * 0.25, oy));
+        ox = Math.max(W - mw - 80, Math.min(80, ox));
+        oy = Math.max(H - mh - 90, Math.min(90, oy));
     }
+
+    /** The map opens 5x closer than the old 3.0 start view (about 20 degrees of longitude across a 1500 px window). */
+    static final double START_ZOOM = 15.0, MAX_ZOOM = 32.0;
+    private int pendingCenter = -1;
+    private double pendingZoom;
+
+    /** Zoomed out as far as it goes: the world still covers the whole window, so there is never dead space around it. */
+    double minZoom() {
+        int W = Math.max(2, getWidth()), H = Math.max(2, getHeight());
+        return Math.max(Math.max(W / (double) w.width, H / (double) w.height), 0.3);
+    }
+
+    private double clampZoom(double z) { return Math.max(minZoom(), Math.min(MAX_ZOOM, z)); }
 
     private double zoom = 1, ox, oy;
     private boolean fitted;
@@ -186,8 +206,8 @@ final class MapPanel extends JPanel {
             }
             @Override public void mouseExited(MouseEvent e) { mouse = null; hoverProv = -1; hoverOverlay = -1; repaint(); }
             @Override public void mouseWheelMoved(MouseWheelEvent e) {
-                double f = e.getWheelRotation() < 0 ? 1.25 : 1 / 1.25;
-                targetZoom = Math.max(0.4, Math.min(16, (targetZoom > 0 ? targetZoom : zoom) * f));
+                double f = e.getWheelRotation() < 0 ? 1.3 : 1 / 1.3;
+                targetZoom = clampZoom((targetZoom > 0 ? targetZoom : zoom) * f);
                 anchor = e.getPoint(); velX = velY = 0;
             }
         };
@@ -196,9 +216,10 @@ final class MapPanel extends JPanel {
     }
 
     void centerOn(int province, double z) {
+        if (getWidth() < 2 || getHeight() < 2) { pendingCenter = province; pendingZoom = z; fitted = true; return; }   // not laid out yet: apply on first paint
         WorldData.ProvinceInfo p = w.provinces.get(province);
         targetZoom = -1; velX = velY = 0;
-        zoom = z; ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; clampView(); repaint();
+        zoom = clampZoom(z); ox = getWidth() / 2.0 - p.cx * zoom; oy = getHeight() / 2.0 - p.cy * zoom; fitted = true; clampView(); repaint();
     }
 
     void viewChanged() { repaint(); }
@@ -207,7 +228,7 @@ final class MapPanel extends JPanel {
 
     void zoomBy(double f) {
         anchor = new Point(getWidth() / 2, getHeight() / 2);
-        targetZoom = Math.max(0.4, Math.min(16, (targetZoom > 0 ? targetZoom : zoom) * f));
+        targetZoom = clampZoom((targetZoom > 0 ? targetZoom : zoom) * f);
         velX = velY = 0;
     }
 
@@ -446,9 +467,9 @@ final class MapPanel extends JPanel {
     private void buildGlitter() {
         java.util.Random rnd = new java.util.Random(4242);
         BufferedImage mask = basemap.seaMask;
-        int n = 0, want = 2600;
+        int n = 0, want = 90000;
         float[] xs = new float[want], ys = new float[want], rt = new float[want], ph = new float[want];
-        for (int tries = 0; tries < 60000 && n < want; tries++) {
+        for (int tries = 0; tries < 220000 && n < want; tries++) {
             double x = rnd.nextDouble() * w.width, y = rnd.nextDouble() * w.height;
             int mx = (int) (x * Basemap.MASK_PX_PER_UNIT), my = (int) (y * Basemap.MASK_PX_PER_UNIT);
             if (mx >= mask.getWidth() || my >= mask.getHeight() || (mask.getRGB(mx, my) >>> 24) < 250) continue;
@@ -458,11 +479,11 @@ final class MapPanel extends JPanel {
     }
 
     private void drawGlitter(Graphics2D g) {
-        if (zoom > 7 || zoom < 0.9) return;
+        if (zoom > 24 || zoom < 0.9) return;
         if (glitterX == null) buildGlitter();
         double t = System.currentTimeMillis() / 1000.0;
-        float fade = (float) Math.min(1, (7 - zoom) / 2.0);
-        int stride = zoom < 1.4 ? 5 : zoom < 2.2 ? 3 : zoom < 3.2 ? 2 : 1;
+        float fade = (float) Math.min(1, (24 - zoom) / 6.0);
+        int stride = (int) Math.max(1, Math.min(80, Math.round(302 / (zoom * zoom))));
         for (int i = 0; i < glitterX.length; i += stride) {
             double sx = glitterX[i] * zoom + ox, sy = glitterY[i] * zoom + oy;
             if (sx < -4 || sy < -4 || sx > getWidth() + 4 || sy > getHeight() + 4) continue;
@@ -484,12 +505,12 @@ final class MapPanel extends JPanel {
 
     /** Animated swell, surf and cloud shadows, drawn at quarter resolution and scaled up (they are soft by nature). */
     private void drawFx(Graphics2D g, MapLayers.Result r, double s, double tx, double ty) {
-        if (zoom > 10) return;
+        if (zoom > 28) return;
         BufferedImage mask = r.waveMask;
         if (fxBuf == null || fxBuf.getWidth() != mask.getWidth() || fxBuf.getHeight() != mask.getHeight()) { fxBuf = new BufferedImage(mask.getWidth(), mask.getHeight(), BufferedImage.TYPE_INT_ARGB); fxFor = null; }
         long now = System.currentTimeMillis();
         if (fxFor != r || now - fxStamp >= 45) { fxFor = r; fxStamp = now; renderFx(r, now, s, tx, ty); }
-        float a = (float) Math.max(0, Math.min(1, (10 - zoom) / 4.0));
+        float a = (float) Math.max(0, Math.min(1, (28 - zoom) / 8.0));
         Composite old = g.getComposite();
         if (a < 1) g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -530,10 +551,11 @@ final class MapPanel extends JPanel {
         long t0 = System.nanoTime(), tm = t0;
         super.paintComponent(g0);
         Graphics2D g = (Graphics2D) g0;
-        if (!fitted && getWidth() > 0) {
-            zoom = Math.max(0.5, getWidth() / (double) w.width);
-            ox = 0; oy = (getHeight() - w.height * zoom) / 2;
-            fitted = true;
+        if (pendingCenter >= 0 && getWidth() > 1 && getHeight() > 1) { int pc = pendingCenter; pendingCenter = -1; centerOn(pc, pendingZoom); }
+        if (!fitted && getWidth() > 1) {
+            zoom = minZoom();
+            ox = (getWidth() - w.width * zoom) / 2; oy = (getHeight() - w.height * zoom) / 2;
+            fitted = true; clampView();
         }
         if (cur == null) renderNow();
         else if (layersStale()) requestRender();
@@ -981,10 +1003,16 @@ final class MapPanel extends JPanel {
     }
 
     // ------------------------------------------------------------------ input
+    /** The province under a screen point. The pick map is coarse (one pixel per map unit), so close up the vector shapes decide. */
     private int provinceAt(int sx, int sy) {
-        int px = (int) ((sx - ox) / zoom), py = (int) ((sy - oy) / zoom);
-        if (px < 0 || py < 0 || px >= w.width || py >= w.height) return -1;
-        return w.idMap[py * w.width + px];
+        double wx = (sx - ox) / zoom, wy = (sy - oy) / zoom;
+        int px = (int) wx, py = (int) wy;
+        if (wx < 0 || wy < 0 || px >= w.width || py >= w.height) return -1;
+        int id = w.idMap[py * w.width + px];
+        if (zoom < 3.5 || id < 0) return id;
+        if (shapes.fill[id].contains(wx, wy)) return id;
+        for (int nb : w.provinces.get(id).neighbours) if (shapes.fill[nb].contains(wx, wy)) return nb;
+        return id;
     }
 
     private void click(MouseEvent e) {
@@ -1050,7 +1078,7 @@ final class MapPanel extends JPanel {
         if (i < Mode.values().length) setMode(Mode.values()[i]);
         else if (i == 10) zoomBy(1.4);
         else if (i == 11) zoomBy(1 / 1.4);
-        else if (i == 12) centerOn(w.nations.get(gs.player).capital, Math.max(zoom, 2.6));
+        else if (i == 12) centerOn(w.nations.get(gs.player).capital, Math.max(zoom, START_ZOOM));
     }
 
     private int capitalAt(Point p) {
