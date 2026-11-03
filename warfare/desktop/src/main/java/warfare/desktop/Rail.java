@@ -54,36 +54,42 @@ final class Rail extends JPanel {
             });
         }
 
+        private final Cache face = new Cache();
+
         @Override protected void paintComponent(Graphics g0) {
             Graphics2D g = (Graphics2D) g0.create();
-            Wf.quality(g);
             int w = getWidth(), h = getHeight();
             boolean on = items.get(active) == this;
-            RoundRectangle2D cell = new RoundRectangle2D.Float(2, 1, w - 4, h - 2, 6, 6);
-            if (on) {
-                g.setPaint(new GradientPaint(0, 0, new Color(226, 187, 102, 52), 0, h, new Color(226, 187, 102, 14)));
-                g.fill(cell);
-                g.setColor(Skin.BRASS_HI);
-                g.fill(new RoundRectangle2D.Float(2, 10, 3, h - 20, 3, 3));
-            } else if (hover) { g.setColor(new Color(255, 255, 255, 18)); g.fill(cell); }
-            g.drawImage(Assets.icon(icon, 26, on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(206, 204, 198)), (w - 26) / 2, 9, null);
-            g.setFont(Fonts.label(11.5f));
-            FontMetrics fm = g.getFontMetrics();
-            String t = label.toUpperCase();
-            g.setColor(on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(176, 175, 170));
-            g.drawString(t, (w - fm.stringWidth(t)) / 2, h - 11);
+            face.paint(g, 0, 0, w, h, (on ? 2 : 0) | (hover ? 1 : 0), b -> {
+                RoundRectangle2D cell = new RoundRectangle2D.Float(2, 1, w - 4, h - 2, 6, 6);
+                if (on) {
+                    b.setPaint(new GradientPaint(0, 0, new Color(226, 187, 102, 52), 0, h, new Color(226, 187, 102, 14)));
+                    b.fill(cell);
+                    b.setColor(Skin.BRASS_HI);
+                    b.fill(new RoundRectangle2D.Float(2, 10, 3, h - 20, 3, 3));
+                } else if (hover) { b.setColor(new Color(255, 255, 255, 18)); b.fill(cell); }
+                b.drawImage(Assets.icon(icon, 26, on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(206, 204, 198)), (w - 26) / 2, 9, null);
+                b.setFont(Fonts.label(11.5f));
+                FontMetrics fm = b.getFontMetrics();
+                String t = label.toUpperCase();
+                b.setColor(on ? Skin.BRASS_HI : hover ? Color.WHITE : new Color(176, 175, 170));
+                b.drawString(t, (w - fm.stringWidth(t)) / 2, h - 11);
+            });
             g.dispose();
         }
     }
 
+    private final Cache dock = new Cache();
+
     @Override protected void paintComponent(Graphics g0) {
         Graphics2D g = (Graphics2D) g0.create();
-        Wf.quality(g);
         int w = getWidth(), h = getHeight();
-        Skin.shadow(g, 0, 0, w - 4, h - 4, 8, 5, 90);
-        RoundRectangle2D dock = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
-        Skin.plate(g, dock, Skin.Kind.BAR, 1f);
-        Skin.frame(g, 0.5f, 0.5f, w - 5, h - 5, 8, false, false);
+        dock.paint(g, 0, 0, w, h, null, b -> {
+            Skin.shadow(b, 0, 0, w - 4, h - 4, 8, 5, 90);
+            RoundRectangle2D plate = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
+            Skin.plate(b, plate, Skin.Kind.BAR, 1f);
+            Skin.frame(b, 0.5f, 0.5f, w - 5, h - 5, 8, false, false);
+        });
         g.dispose();
     }
 }

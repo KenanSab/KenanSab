@@ -22,6 +22,7 @@ final class MapLayers {
     static final int MARGIN = 160;
     /** The animated sea effects are rendered at 1/FX_DIV of the layer resolution. */
     static final int FX_DIV = 4;
+    private static final AffineTransform DETAIL_UP = AffineTransform.getScaleInstance(2, 2);
     static final Color BACKGROUND = new Color(16, 36, 56);
 
     record Params(double zoom, double ox, double oy, int w, int h, int[] fill, byte[] arc, double snowN, double snowS, double snowCap) {}
@@ -93,12 +94,19 @@ final class MapLayers {
     }
 
     // ------------------------------------------------------------------ full render
-    Result render(Params p) {
+    Result render(Params p) { return render(p, null); }
+
+    private static BufferedImage image(BufferedImage old, int w, int h, int type) {
+        return old != null && old.getWidth() == w && old.getHeight() == h && old.getType() == type ? old : new BufferedImage(w, h, type);
+    }
+
+    /** Renders a view. {@code recycle} is a result nobody is showing any more: its big images are reused, which saves tens of MB of garbage per render. */
+    Result render(Params p, Result recycle) {
         Result r = new Result(p.zoom, p.ox, p.oy, p.w, p.h);
         r.fillSnap = p.fill; r.arcSnap = p.arc; r.snowN = p.snowN; r.snowS = p.snowS; r.snowCap = p.snowCap;
-        r.fill = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
-        r.line = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
-        r.composite = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_RGB);
+        r.fill = image(recycle == null ? null : recycle.fill, r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
+        r.line = image(recycle == null ? null : recycle.line, r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
+        r.composite = image(recycle == null ? null : recycle.composite, r.iw, r.ih, BufferedImage.TYPE_INT_RGB);
         Rectangle all = r.imageRect();
         drawFills(r, all);
         placeNames(r);
@@ -138,7 +146,7 @@ final class MapLayers {
         g.drawImage(r.fill, 0, 0, null);
         drawSnow(g, r, clip);
         g.drawImage(base.relief, at, null);
-        if (r.detail != null) g.drawImage(r.detail, 0, 0, null);
+        if (r.detail != null) g.drawImage(r.detail, DETAIL_UP, null);
         g.drawImage(r.line, 0, 0, null);
         g.dispose();
     }
@@ -171,32 +179,34 @@ final class MapLayers {
         final double z = r.zoom;
         final double strength = smooth(4.5, 10.0, z);
         if (strength < 0.03) return null;
-        final BufferedImage img = new BufferedImage(r.iw, r.ih, BufferedImage.TYPE_INT_ARGB);
+        final int hw = r.iw / 2 + 1, hh = r.ih / 2 + 1;          // half resolution: the shading is soft, and this is a quarter of the work
+        final BufferedImage img = new BufferedImage(hw, hh, BufferedImage.TYPE_INT_ARGB);
         final int[] out = ((java.awt.image.DataBufferInt) img.getRaster().getDataBuffer()).getData();
         final int[] sea = ((java.awt.image.DataBufferInt) base.seaMask.getRaster().getDataBuffer()).getData();
         final int sw = base.seaMask.getWidth(), sh = base.seaMask.getHeight();
         final int[] rel = ((java.awt.image.DataBufferInt) base.relief.getRaster().getDataBuffer()).getData();
         final int rw = base.relief.getWidth(), rh = base.relief.getHeight();
-        final int oct = z >= 16 ? 5 : z >= 9 ? 4 : 3;
-        final double d = 1.0 / z, f = 0.42, worldW = w.width, worldH = w.height;
-        java.util.stream.IntStream.range(0, r.ih).parallel().forEach(y -> {
-            double wy = (y - MARGIN - r.oy) / z;
-            if (wy < 0 || wy >= worldH) return;
+        final int oct = 3;
+        final double f = 0.42, worldW = w.width, worldH = w.height;
+        final double[] g3 = new double[3];
+        for (int y = 0; y < hh; y++) {
+            double wy = (2 * y - MARGIN - r.oy) / z;
+            if (wy < 0 || wy >= worldH) continue;
             int my = Math.min(sh - 1, (int) (wy * Basemap.MASK_PX_PER_UNIT)), ry = Math.min(rh - 1, (int) (wy * Basemap.PX_PER_UNIT));
-            for (int x = 0; x < r.iw; x++) {
-                double wx = (x - MARGIN - r.ox) / z;
+            for (int x = 0; x < hw; x++) {
+                double wx = (2 * x - MARGIN - r.ox) / z;
                 if (wx < 0 || wx >= worldW) continue;
                 int sa = sea[my * sw + Math.min(sw - 1, (int) (wx * Basemap.MASK_PX_PER_UNIT))] >>> 24;
                 if (sa > 190) continue;
                 double land = 1 - sa / 255.0;
                 double rug = (rel[ry * rw + Math.min(rw - 1, (int) (wx * Basemap.PX_PER_UNIT))] >>> 24) / 255.0;
-                double h0 = Basemap.fbm(wx * f + 11, wy * f + 7, oct), hx = Basemap.fbm((wx + d) * f + 11, wy * f + 7, oct), hy = Basemap.fbm(wx * f + 11, (wy + d) * f + 7, oct);
-                double shade = Math.max(-1, Math.min(1, ((h0 - hx) * 0.78 + (h0 - hy) * 0.62) * z * 1.3));
+                Basemap.fbmGrad(wx * f + 11, wy * f + 7, oct, g3);
+                double shade = Math.max(-1, Math.min(1, -(g3[1] * 0.78 + g3[2] * 0.62) * f * 1.3));
                 double amp = strength * land * (0.22 + 1.1 * rug);
                 int a = (int) Math.min(255, Math.abs(shade) * amp * (shade > 0 ? 0.50 : 0.62) * 255);
-                if (a > 1) out[y * r.iw + x] = shade > 0 ? (a << 24) | 0xFFF6E4 : (a << 24) | 0x120C06;
+                if (a > 1) out[y * hw + x] = shade > 0 ? (a << 24) | 0xFFF6E4 : (a << 24) | 0x120C06;
             }
-        });
+        }
         return img;
     }
 

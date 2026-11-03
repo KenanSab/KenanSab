@@ -22,22 +22,36 @@ public final class Relations {
         return false;
     }
 
+    /** The part of the baseline that never changes (blocs, continents, rivalries, friendships, personal touch): computed once. */
+    private static float[][] statics(GameState gs) {
+        if (gs.relStatic == null) {
+            float[][] m = new float[gs.N][gs.N];
+            for (int a = 0; a < gs.N; a++)
+                for (int b = 0; b < gs.N; b++) {
+                    if (a == b) continue;
+                    WorldData.NationInfo x = gs.world.nations.get(a), y = gs.world.nations.get(b);
+                    double v = 0;
+                    if (!x.bloc.equals("NONE") && x.bloc.equals(y.bloc)) v += 45;
+                    if (x.continent.equals(y.continent)) v += 3;
+                    if (pair(RIVALS, x.tag, y.tag)) v -= 65;
+                    if (pair(FRIENDS, x.tag, y.tag)) v += 46;
+                    v += ((x.tag + y.tag).hashCode() * 31 % 13 + 13) % 13 - 6;     // a fixed, unremarkable personal touch so no two pairs are identical
+                    m[a][b] = (float) v;
+                }
+            gs.relStatic = m;
+        }
+        return gs.relStatic;
+    }
+
     /** What opinion drifts back to when nothing special happens. */
     public static double baseline(GameState gs, int a, int b) {
-        WorldData.NationInfo x = gs.world.nations.get(a), y = gs.world.nations.get(b);
-        double v = 0;
-        if (!x.bloc.equals("NONE") && x.bloc.equals(y.bloc)) v += 45;
-        if (x.continent.equals(y.continent)) v += 3;
-        if (pair(RIVALS, x.tag, y.tag)) v -= 65;
-        if (pair(FRIENDS, x.tag, y.tag)) v += 46;
+        double v = statics(gs)[a][b];
         Government gx = gs.ns[a].gov, gy = gs.ns[b].gov;
         boolean dx = gx == Government.DEMOCRACY || gx == Government.REPUBLIC, dy = gy == Government.DEMOCRACY || gy == Government.REPUBLIC;
         if (gx == Government.DEMOCRACY && gy == Government.DEMOCRACY) v += 10;
         else if (gx == gy) v += 5;
         else if (dx != dy) v -= 7;
         if (gs.sharesBorder(a, b)) v -= 6;
-        // a fixed, unremarkable personal touch so no two pairs are identical
-        v += ((x.tag + y.tag).hashCode() * 31 % 13 + 13) % 13 - 6;
         return Math.max(-100, Math.min(100, v));
     }
 

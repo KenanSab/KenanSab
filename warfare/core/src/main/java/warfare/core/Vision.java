@@ -74,10 +74,12 @@ public final class Vision {
     }
 
     public static void updateAll(GameState gs) {
+        if (gs.visionStride > 1 && gs.day % gs.visionStride != 0) return;
         Set<Integer> compute = new LinkedHashSet<>();
         Set<Integer> observers = new LinkedHashSet<>();
         for (int n = 0; n < gs.N; n++) {
             if (!gs.ns[n].alive || !gs.needsIntel(n)) continue;
+            if (n != gs.player && (gs.day + n) % 3 != 0) continue;       // AI nations think every third day, so they only need to see then
             observers.add(n); compute.add(n);
             for (int m = 0; m < gs.N; m++) if (m != n && gs.ns[m].alive && gs.isAlly(n, m)) compute.add(m);
         }

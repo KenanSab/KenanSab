@@ -281,6 +281,29 @@ final class Basemap {
         return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
     }
 
+    private static final float[] LATTICE = new float[256 * 256];
+    static { for (int y = 0; y < 256; y++) for (int x = 0; x < 256; x++) LATTICE[y * 256 + x] = (float) hash(x * 7 + 3, y * 13 + 5); }
+
+    /** fbm and its gradient in one pass (analytic derivative of the smooth value noise): out = {value, d/dx, d/dy}. */
+    static void fbmGrad(double x, double y, int oct, double[] out) {
+        double v = 0, gx = 0, gy = 0, amp = 0.5, tot = 0, freq = 1;
+        for (int o = 0; o < oct; o++) {
+            double px = x * freq, py = y * freq;
+            int xi = (int) Math.floor(px), yi = (int) Math.floor(py);
+            double fx = px - xi, fy = py - yi;
+            double ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+            double dux = 6 * fx * (1 - fx), duy = 6 * fy * (1 - fy);
+            int x0 = xi & 255, x1 = (xi + 1) & 255, y0 = (yi & 255) << 8, y1 = ((yi + 1) & 255) << 8;
+            double a = LATTICE[y0 | x0], bb = LATTICE[y0 | x1], c = LATTICE[y1 | x0], d = LATTICE[y1 | x1];
+            double k = a - bb - c + d;
+            v += amp * (a + (bb - a) * ux + (c - a) * uy + k * ux * uy);
+            gx += amp * freq * ((bb - a) + k * uy) * dux;
+            gy += amp * freq * ((c - a) + k * ux) * duy;
+            tot += amp; freq *= 2.03; amp *= 0.5;
+        }
+        out[0] = v / tot; out[1] = gx / tot; out[2] = gy / tot;
+    }
+
     static double fbm(double x, double y, int oct) {
         double v = 0, amp = 0.5, tot = 0;
         for (int o = 0; o < oct; o++) { v += amp * noise(x, y); tot += amp; x *= 2.03; y *= 2.03; amp *= 0.5; }

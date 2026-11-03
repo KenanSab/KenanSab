@@ -63,6 +63,11 @@ final class MapPanel extends JPanel {
 
     // ---- cached layers: rendered on a worker thread, patched in place when the fog changes
     private volatile MapLayers.Result cur;
+    private MapLayers.Result spare;                       // an old result nobody shows any more: its images are reused by the next render
+    private long lastRenderDoneMs;
+    /** Minimum time between full re-renders for colour and season changes: longer when the game runs fast. */
+    volatile long renderGapMs = 1600;
+    private javax.swing.Timer colourTimer;
     private boolean rendering, wantRender;
     private long epoch;
     private static final java.util.concurrent.ExecutorService worker = java.util.concurrent.Executors.newSingleThreadExecutor(rn -> {
@@ -79,8 +84,25 @@ final class MapPanel extends JPanel {
     @Override public void removeNotify() { animTimer.stop(); super.removeNotify(); }
 
     /** Eases wheel zoom toward its target, coasts after a drag, and keeps the sea moving. */
+    private double paintEma = 8;
+    private int fxLevel;                 // 0 everything, 1 no glitter or clouds and slower water, 2 static sea
+    private long fxJudged;
+
+    /** Backs the animation off when painting is slow, and brings it back when there is room again. */
+    private void judgeQuality() {
+        long now = System.currentTimeMillis();
+        if (now - fxJudged < 1500) return;
+        fxJudged = now;
+        if (Settings.graphics == 1) { fxLevel = 0; return; }
+        if (Settings.graphics == 2) { fxLevel = 2; return; }
+        if (paintEma > 26) fxLevel = 2;
+        else if (paintEma > 15) fxLevel = Math.max(fxLevel, 1);
+        else if (paintEma < 9 && fxLevel > 0) fxLevel--;
+    }
+
     private void animate() {
         if (!isShowing()) return;
+        judgeQuality();
         boolean moving = false;
         if (targetZoom > 0) {
             double nz = zoom + (targetZoom - zoom) * 0.30;
@@ -93,9 +115,50 @@ final class MapPanel extends JPanel {
             ox += velX; oy += velY; velX *= 0.90; velY *= 0.90; moving = true;
         }
         if (moving) clampView();
-        int delay = moving ? 16 : 40;
+        int delay = moving ? 16 : fxLevel == 0 ? 66 : fxLevel == 1 ? 120 : 250;
         if (animTimer.getDelay() != delay) animTimer.setDelay(delay);
-        repaint();
+        repaintUncovered();
+    }
+
+    /** Screen areas that other interface elements hide completely (top bar, rail, open windows): the animation does not repaint under them. */
+    volatile Rectangle[] covered = new Rectangle[0];
+
+    /**
+     * Repaints the map except where something opaque sits on top of it. Painting an open window again for every wave of the sea
+     * used to cost more than the map itself; now only the visible strips are painted. Swing would merge several dirty rectangles
+     * of one component into their bounding box, so the strips are painted directly.
+     */
+    private void repaintUncovered() {
+        Rectangle[] cov = covered;
+        int W = getWidth(), H = getHeight();
+        if (cov.length == 0 || W < 2 || H < 2) { repaint(); return; }
+        int[] ys = new int[cov.length * 2 + 2];
+        int n = 0;
+        ys[n++] = 0; ys[n++] = H;
+        for (Rectangle c : cov) { ys[n++] = Math.max(0, Math.min(H, c.y)); ys[n++] = Math.max(0, Math.min(H, c.y + c.height)); }
+        java.util.Arrays.sort(ys, 0, n);
+        List<Rectangle> parts = new ArrayList<>();
+        for (int i = 0; i + 1 < n; i++) {
+            int y0 = ys[i], y1 = ys[i + 1];
+            if (y1 <= y0) continue;
+            List<int[]> hide = new ArrayList<>();                    // x ranges hidden in this band; every rectangle covers it fully or not at all
+            for (Rectangle c : cov) if (c.y <= y0 && c.y + c.height >= y1) hide.add(new int[]{Math.max(0, c.x), Math.min(W, c.x + c.width)});
+            hide.sort((a, b) -> Integer.compare(a[0], b[0]));
+            int x = 0;
+            for (int[] hr : hide) {
+                if (hr[0] > x) addStrip(parts, x, y0, hr[0] - x, y1 - y0);
+                x = Math.max(x, hr[1]);
+            }
+            if (x < W) addStrip(parts, x, y0, W - x, y1 - y0);
+        }
+        if (parts.size() > 10) { repaint(); return; }
+        for (Rectangle r : parts) paintImmediately(r);
+    }
+
+    /** Adds a strip, extending the one directly above it when they have the same width. */
+    private static void addStrip(List<Rectangle> parts, int x, int y, int w, int h) {
+        for (Rectangle r : parts) if (r.x == x && r.width == w && r.y + r.height == y) { r.height += h; return; }
+        parts.add(new Rectangle(x, y, w, h));
     }
 
     /** Keeps the world on screen: zoom stays within its limits and at most a thin strip of empty space shows beyond the map edge. */
@@ -298,7 +361,7 @@ final class MapPanel extends JPanel {
         if (pendFill.isEmpty() && pendArc.isEmpty()) return;
         MapLayers.Result r = cur;
         if (r == null || rendering) return;                 // the next adopted render diffs against its snapshot
-        if (pendFill.size() > 140 || pendArc.size() > 90) { clearPending(); requestRender(); return; }
+        if (pendFill.size() > 30 || pendArc.size() > 40) { clearPending(); scheduleColourRender(); return; }
         Rectangle dirty = null;
         if (!pendFill.isEmpty()) dirty = union(dirty, layers.updateFill(r, fillArgb, pendFill));
         if (!pendArc.isEmpty()) dirty = union(dirty, layers.updateLines(r, arcClass, pendArc));
@@ -314,7 +377,15 @@ final class MapPanel extends JPanel {
         int doy = gs.date().getDayOfYear();
         double phase = (doy - 20 - (south ? 182 : 0)) / 365.0 * 2 * Math.PI;
         double winter = Math.max(0, Math.min(1, 0.5 + 0.62 * Math.cos(phase)));
-        return Math.round(winter / 0.08) * 0.08;
+        return Math.round(winter / 0.125) * 0.125;
+    }
+
+    /** Colour and season changes are not urgent: at most one full re-render every 1.6 seconds, however fast the game runs. */
+    private void scheduleColourRender() {
+        long wait = Math.max(0, renderGapMs - (System.currentTimeMillis() - lastRenderDoneMs));
+        if (wait == 0) { requestRender(); return; }
+        if (colourTimer == null) { colourTimer = new javax.swing.Timer(1, e -> requestRender()); colourTimer.setRepeats(false); }
+        if (!colourTimer.isRunning()) { colourTimer.setInitialDelay((int) wait); colourTimer.start(); }
     }
 
     private MapLayers.Params snapshot() {
@@ -328,17 +399,21 @@ final class MapPanel extends JPanel {
         rendering = true; wantRender = false;
         final long ep = epoch;
         final MapLayers.Params p = snapshot();
+        final MapLayers.Result reuse = spare;
+        spare = null;
         worker.submit(() -> {
             MapLayers.Result res = null; Throwable err = null;
             long t0 = System.nanoTime();
-            try { res = layers.render(p); } catch (Throwable t) { err = t; }
+            try { res = layers.render(p, reuse); } catch (Throwable t) { err = t; }
             final MapLayers.Result done = res; final Throwable failed = err; final long took = System.nanoTime() - t0;
             SwingUtilities.invokeLater(() -> {
                 rendering = false;
                 if (failed != null) throw new RuntimeException("map layer render failed", failed);
                 renderNs += took; renders++;
-                if (ep == epoch) adopt(done);
-                if (wantRender || layersStale()) requestRender();
+                lastRenderDoneMs = System.currentTimeMillis();
+                if (ep == epoch) adopt(done); else if (done != null) spare = done;
+                if (wantRender || viewStale()) requestRender();
+                else if (seasonStale() || pendFill.size() > 30) scheduleColourRender();
             });
         });
     }
@@ -348,12 +423,16 @@ final class MapPanel extends JPanel {
         if (getWidth() < 2 || getHeight() < 2) return;
         epoch++;
         long t0 = System.nanoTime();
-        adopt(layers.render(snapshot()));
+        MapLayers.Result reuse = spare;
+        spare = null;
+        adopt(layers.render(snapshot(), reuse));
         renderNs += System.nanoTime() - t0; renders++;
     }
 
     private void adopt(MapLayers.Result r) {
+        MapLayers.Result old = cur;
         cur = r;
+        if (old != null && old != r) spare = old;
         clearPending();
         for (int p = 0; p < fillArgb.length; p++) if (r.fillSnap[p] != fillArgb[p]) markFill(p);
         for (int a = 0; a < arcClass.length; a++) if (r.arcSnap[a] != arcClass[a]) markArc(a);
@@ -362,17 +441,22 @@ final class MapPanel extends JPanel {
     }
 
     /** True when the cached layers no longer cover the view well enough: another zoom level, resized, or panned near the margin. */
-    private boolean layersStale() {
+    private boolean viewStale() {
         MapLayers.Result r = cur;
         int W = getWidth(), H = getHeight();
         if (r == null) return W > 1 && H > 1;
         if (r.vw != W || r.vh != H) return true;
         double s = zoom / r.zoom;
         if (Math.abs(s - 1) > 0.025) return true;
-        if (r.snowN != seasonSnow(false) || r.snowS != seasonSnow(true)) return true;
         double tx = ox - s * (MapLayers.MARGIN + r.ox), ty = oy - s * (MapLayers.MARGIN + r.oy);
         double slack = Math.min(Math.min(-tx / s, r.iw - (W - tx) / s), Math.min(-ty / s, r.ih - (H - ty) / s));
         return slack < MapLayers.MARGIN * 0.4;
+    }
+
+    /** The snow line has moved a notch since the layers were drawn. */
+    private boolean seasonStale() {
+        MapLayers.Result r = cur;
+        return r != null && (r.snowN != seasonSnow(false) || r.snowS != seasonSnow(true));
     }
 
     /** Blocks until the cached layers match the current view exactly (screenshots, tests). */
@@ -407,7 +491,7 @@ final class MapPanel extends JPanel {
         WorldData.ProvinceInfo pi = w.provinces.get(p);
         int q = in.quality[p];
         double conf = in.provinceConfidence(p, gs.day);
-        double stale = Math.round((1 - conf) * 12) / 12.0;   // quantised so fog changes only every few days
+        double stale = Math.round((1 - conf) * 6) / 6.0;   // quantised so fog changes only every ten days or so
         switch (mode) {
             case TERRAIN -> {
                 if (q > 0) return 0;
@@ -543,9 +627,9 @@ final class MapPanel extends JPanel {
     private void buildGlitter() {
         java.util.Random rnd = new java.util.Random(4242);
         BufferedImage mask = basemap.seaMask;
-        int n = 0, want = 90000;
+        int n = 0, want = 40000;
         float[] xs = new float[want], ys = new float[want], rt = new float[want], ph = new float[want];
-        for (int tries = 0; tries < 220000 && n < want; tries++) {
+        for (int tries = 0; tries < 120000 && n < want; tries++) {
             double x = rnd.nextDouble() * w.width, y = rnd.nextDouble() * w.height;
             int mx = (int) (x * Basemap.MASK_PX_PER_UNIT), my = (int) (y * Basemap.MASK_PX_PER_UNIT);
             if (mx >= mask.getWidth() || my >= mask.getHeight() || (mask.getRGB(mx, my) >>> 24) < 250) continue;
@@ -554,23 +638,40 @@ final class MapPanel extends JPanel {
         glitterX = Arrays.copyOf(xs, n); glitterY = Arrays.copyOf(ys, n); glitterRate = Arrays.copyOf(rt, n); glitterPhase = Arrays.copyOf(ph, n);
     }
 
+    private static BufferedImage[] glitterSprites;
+
+    private static synchronized BufferedImage[] glitterSprites() {
+        if (glitterSprites != null) return glitterSprites;
+        BufferedImage[] s = new BufferedImage[4];
+        for (int k = 0; k < 4; k++) {
+            BufferedImage img = new BufferedImage(7, 7, BufferedImage.TYPE_INT_ARGB);
+            float a = 0.25f + 0.25f * k;
+            for (int d = 0; d < 3; d++) {
+                int al = (int) (255 * a * (d == 0 ? 0.95 : d == 1 ? 0.4 : 0.14));
+                int px = (al << 24) | 0xFFFFFF;
+                img.setRGB(3, 3, px);
+                if (d >= 1) { img.setRGB(3 + d, 3, px); img.setRGB(3 - d, 3, px); img.setRGB(3, 3 + d, px); img.setRGB(3, 3 - d, px); }
+            }
+            s[k] = img;
+        }
+        return glitterSprites = s;
+    }
+
     private void drawGlitter(Graphics2D g) {
         if (zoom > 24 || zoom < 0.9) return;
         if (glitterX == null) buildGlitter();
+        BufferedImage[] sp = glitterSprites();
         double t = System.currentTimeMillis() / 1000.0;
-        float fade = (float) Math.min(1, (24 - zoom) / 6.0);
-        int stride = (int) Math.max(1, Math.min(80, Math.round(302 / (zoom * zoom))));
+        double fade = Math.min(1, (24 - zoom) / 6.0);
+        int stride = (int) Math.max(1, Math.min(60, Math.round(130 / (zoom * zoom))));
+        int W = getWidth() + 4, H = getHeight() + 4;
         for (int i = 0; i < glitterX.length; i += stride) {
             double sx = glitterX[i] * zoom + ox, sy = glitterY[i] * zoom + oy;
-            if (sx < -4 || sy < -4 || sx > getWidth() + 4 || sy > getHeight() + 4) continue;
+            if (sx < -4 || sy < -4 || sx > W || sy > H) continue;
             double tw = Math.sin(t * glitterRate[i] + glitterPhase[i]);
             if (tw < 0.55) continue;
-            float a = (float) ((tw - 0.55) / 0.45) * fade;
-            g.setColor(new Color(1f, 1f, 1f, 0.55f * a));
-            g.fillRect((int) sx, (int) sy, 2, 2);
-            g.setColor(new Color(1f, 1f, 1f, 0.22f * a));
-            g.fillRect((int) sx - 1, (int) sy, 4, 2);
-            g.fillRect((int) sx, (int) sy - 1, 2, 4);
+            int level = (int) Math.min(3, ((tw - 0.55) / 0.45) * fade * 3.99);
+            g.drawImage(sp[level], (int) sx - 3, (int) sy - 3, null);
         }
     }
 
@@ -581,18 +682,18 @@ final class MapPanel extends JPanel {
 
     /** Animated swell, surf and cloud shadows, drawn at quarter resolution and scaled up (they are soft by nature). */
     private void drawFx(Graphics2D g, MapLayers.Result r, double s, double tx, double ty) {
-        if (zoom > 28) return;
+        if (zoom > 28 || fxLevel >= 2) return;
         BufferedImage mask = r.waveMask;
         if (fxBuf == null || fxBuf.getWidth() != mask.getWidth() || fxBuf.getHeight() != mask.getHeight()) { fxBuf = new BufferedImage(mask.getWidth(), mask.getHeight(), BufferedImage.TYPE_INT_ARGB); fxFor = null; }
         long now = System.currentTimeMillis();
-        if (fxFor != r || now - fxStamp >= 45) { fxFor = r; fxStamp = now; renderFx(r, now, s, tx, ty); }
+        if (fxFor != r || now - fxStamp >= (fxLevel == 0 ? 60 : 120)) { fxFor = r; fxStamp = now; renderFx(r, now, s, tx, ty); }
         float a = (float) Math.max(0, Math.min(1, (28 - zoom) / 8.0));
         Composite old = g.getComposite();
         if (a < 1) g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(fxBuf, new AffineTransform(FX * s, 0, 0, FX * s, tx, ty), null);
         g.setComposite(old);
-        drawGlitter(g);
+        if (fxLevel == 0) drawGlitter(g);
     }
 
     private void renderFx(MapLayers.Result r, long now, double s, double tx, double ty) {
@@ -619,7 +720,7 @@ final class MapPanel extends JPanel {
         b.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, (float) ((0.15 + 0.5 * pb) * surfK)));
         b.drawImage(r.shoreB, 0, 0, null);
         // cloud shadows fall on land and sea alike
-        tile(b, cloudTile(), t * 0.9, t * 0.35, vis, 0.85f);
+        if (fxLevel == 0) tile(b, cloudTile(), t * 0.9, t * 0.35, vis, 0.85f);
         b.dispose();
     }
 
@@ -635,7 +736,8 @@ final class MapPanel extends JPanel {
             fitted = true; clampView();
         }
         if (cur == null) renderNow();
-        else if (layersStale()) requestRender();
+        else if (viewStale()) requestRender();
+        else if (seasonStale()) scheduleColourRender();
         MapLayers.Result r = cur;
         if (r != null) {
             double s = zoom / r.zoom;
@@ -667,6 +769,7 @@ final class MapPanel extends JPanel {
         drawToasts(g); seg[6] += System.nanoTime() - tm; tm = System.nanoTime();
         if (showPerf) { g.setFont(Fonts.ui(12.5f)); g.setColor(new Color(0, 0, 0, 170)); g.fillRoundRect(10, 10, 640, 24, 8, 8); g.setColor(new Color(150, 255, 170)); g.drawString(perf + String.format("   paint %.1f ms", paintNs / 1e6 / Math.max(1, paints)), 18, 27); }
         if (tutorial != null) tutorial.paint(g, getWidth(), getHeight());
+        paintEma = paintEma * 0.92 + ((System.nanoTime() - t0) / 1e6) * 0.08;
         paintNs += System.nanoTime() - t0; paints++;
         if (paints > 240) { paintNs /= 2; paints /= 2; }
     }
@@ -683,16 +786,27 @@ final class MapPanel extends JPanel {
     }
 
     /** Darkens the screen edges (and the strip under the HUD) so the interface sits on the map instead of floating over it. */
+    private final Cache vigTop = new Cache(), vigBottom = new Cache(), vigLeft = new Cache(), vigRight = new Cache();
+
+    /** The four gradients never change, so each is painted once into an image and blitted. The top bar hides the first rows, so they are not painted at all. */
     private void drawVignette(Graphics2D g) {
-        int W = getWidth(), H = getHeight();
-        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 150), 0, 120, new Color(4, 8, 14, 0)));
-        g.fillRect(0, 0, W, 120);
-        g.setPaint(new GradientPaint(0, H - 150, new Color(4, 8, 14, 0), 0, H, new Color(4, 8, 14, 140)));
-        g.fillRect(0, H - 150, W, 150);
-        g.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 70), 100, 0, new Color(4, 8, 14, 0)));
-        g.fillRect(0, 0, 100, H);
-        g.setPaint(new GradientPaint(W - 100, 0, new Color(4, 8, 14, 0), W, 0, new Color(4, 8, 14, 70)));
-        g.fillRect(W - 100, 0, 100, H);
+        int W = getWidth(), H = getHeight(), top = Hud.BAR_H;
+        vigTop.paint(g, 0, top, W, 120 - top, null, b -> {
+            b.setPaint(new GradientPaint(0, -top, new Color(4, 8, 14, 150), 0, 120 - top, new Color(4, 8, 14, 0)));
+            b.fillRect(0, 0, W, 120 - top);
+        });
+        vigBottom.paint(g, 0, H - 150, W, 150, null, b -> {
+            b.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 0), 0, 150, new Color(4, 8, 14, 140)));
+            b.fillRect(0, 0, W, 150);
+        });
+        vigLeft.paint(g, 0, top, 100, H - top, null, b -> {
+            b.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 70), 100, 0, new Color(4, 8, 14, 0)));
+            b.fillRect(0, 0, 100, H);
+        });
+        vigRight.paint(g, W - 100, top, 100, H - top, null, b -> {
+            b.setPaint(new GradientPaint(0, 0, new Color(4, 8, 14, 0), 100, 0, new Color(4, 8, 14, 70)));
+            b.fillRect(0, 0, 100, H);
+        });
     }
 
     /** A province that changes hands flares white and settles into its new colour. */
@@ -735,13 +849,12 @@ final class MapPanel extends JPanel {
         if (zoom < 4.5) return;
         Intel in = gs.intelOf(gs.player);
         Font f = Fonts.label(11.5f);
-        Color fill = new Color(255, 255, 255, 150), halo = new Color(17, 16, 14, 150);
         for (WorldData.ProvinceInfo p : w.provinces) {
             if (p.sea || shapes.bounds[p.id].width * zoom < 56) continue;
             double sx = p.cx * zoom + ox, sy = p.cy * zoom + oy;
             if (sx < -100 || sy < -30 || sx > getWidth() + 100 || sy > getHeight() + 30) continue;
             if (in.knownOwner[p.id] < 0) continue;
-            Sprites.Sprite sp = Sprites.text(p.name.toUpperCase(), f, fill, halo, 2.4f, 0.8);
+            Sprites.Sprite sp = provLabels.computeIfAbsent(p, k -> Sprites.text(k.name.toUpperCase(), f, PROV_FILL, PROV_HALO, 2.4f, 0.8));
             g.drawImage(sp.img(), (int) Math.round(sx - sp.textW() / 2.0) - sp.padX(), (int) Math.round(sy + 16) - sp.baseline(), null);
         }
     }
@@ -761,7 +874,7 @@ final class MapPanel extends JPanel {
             if (sx < -20 || sy < -20 || sx > getWidth() + 20 || sy > getHeight() + 20) continue;
             if (in.knownOwner[c.province()] < 0) continue;
             double r = c.population() > 8_000_000 ? 4.2 : c.population() > 2_000_000 ? 3.4 : 2.6;
-            Sprites.Sprite sp = Sprites.text(c.name(), font, c.capital() ? new Color(255, 226, 140) : new Color(246, 240, 226), new Color(13, 12, 10, 200), 2.8f, 0);
+            Sprites.Sprite sp = cityLabel(c, zoom < 3 ? 0 : 1, font);
             Rectangle label = new Rectangle((int) sx + 6, (int) sy - 9, sp.textW() + 4, 15);
             boolean room = true;
             for (Rectangle p : placed) if (p.intersects(label)) { room = false; break; }
@@ -776,6 +889,18 @@ final class MapPanel extends JPanel {
             g.drawImage(sp.img(), (int) Math.round(sx + 7) - sp.padX(), (int) Math.round(sy + 4) - sp.baseline(), null);
             shown++;
         }
+    }
+
+    private final Map<MapExtras.City, Sprites.Sprite[]> cityLabels = new java.util.IdentityHashMap<>();
+    private final Map<WorldData.ProvinceInfo, Sprites.Sprite> provLabels = new java.util.IdentityHashMap<>();
+    private static final Color CITY_FILL = new Color(246, 240, 226), CAPITAL_FILL = new Color(255, 226, 140), CITY_HALO = new Color(13, 12, 10, 200),
+            PROV_FILL = new Color(255, 255, 255, 150), PROV_HALO = new Color(17, 16, 14, 150);
+
+    /** A city's name as a ready-made bitmap; looked up by object, because building a text key for every city in every frame was a visible cost. */
+    private Sprites.Sprite cityLabel(MapExtras.City c, int size, Font font) {
+        Sprites.Sprite[] two = cityLabels.computeIfAbsent(c, k -> new Sprites.Sprite[2]);
+        if (two[size] == null) two[size] = Sprites.text(c.name(), font, c.capital() ? CAPITAL_FILL : CITY_FILL, CITY_HALO, 2.8f, 0);
+        return two[size];
     }
 
     private final Map<String, BufferedImage> citySprites = new HashMap<>();
@@ -865,33 +990,54 @@ final class MapPanel extends JPanel {
         return s;
     }
 
+    private final BufferedImage[] starSprites = new BufferedImage[3];
+
+    /** One capital star (0 foreign, 1 ours with a ring, 2 lost to someone else), drawn once and then blitted: dozens of anti-aliased paths per frame were a measurable cost. */
+    private BufferedImage starSprite(int kind) {
+        BufferedImage hit = starSprites[kind];
+        if (hit != null) return hit;
+        double r = kind == 1 ? 11 : 8;
+        int half = (int) Math.ceil(r + 8), d = half * 2;
+        BufferedImage img = new BufferedImage(d, d, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        g.setColor(new Color(0, 0, 0, 120));
+        g.fill(star(half + 1.5, half + 2, r));
+        Path2D.Double star = star(half, half, r);
+        g.setColor(kind == 2 ? new Color(200, 60, 52) : kind == 1 ? new Color(255, 214, 90) : new Color(245, 245, 250));
+        g.fill(star);
+        g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(19, 18, 16, 235));
+        g.draw(star);
+        if (kind == 1) { g.setColor(new Color(255, 214, 90, 150)); g.setStroke(new BasicStroke(1.5f)); g.draw(new Ellipse2D.Double(half - r - 4, half - r - 4, 2 * r + 8, 2 * r + 8)); }
+        g.dispose();
+        starSprites[kind] = img;
+        return img;
+    }
+
     /** Capitals are drawn as stars above the province centre: gold and larger for yours, a red cross-star if lost. */
     private void drawCapitals(Graphics2D g) {
         capRects.clear(); capNations.clear();
         if (zoom < 1.25) return;
         Intel in = gs.intelOf(gs.player);
+        int W = getWidth(), H = getHeight();
         for (WorldData.NationInfo n : w.nations) {
             int p = n.capital;
             if (p < 0) continue;
-            Point2D.Double s = screen(p);
-            if (s.x < -30 || s.y < -30 || s.x > getWidth() + 30 || s.y > getHeight() + 30) continue;
+            WorldData.ProvinceInfo pi = w.provinces.get(p);
+            double sx = pi.cx * zoom + ox, sy = pi.cy * zoom + oy;
+            if (sx < -30 || sy < -30 || sx > W + 30 || sy > H + 30) continue;
             boolean mine = n.index == gs.player, selected = p == selProv;
             if (!mine && !selected && zoom < 1.8) continue;
             int knownOwner = in.knownOwner[p];
             boolean lost = knownOwner >= 0 && knownOwner != n.index;
             double r = mine ? 11 : 8;
-            double cy = s.y - (zoom > 2.5 ? 30 : 20);
-            Path2D.Double star = star(s.x, cy, r);
-            g.setColor(new Color(0, 0, 0, 120));
-            g.fill(star(s.x + 1.5, cy + 2, r));
-            g.setColor(lost ? new Color(200, 60, 52) : mine ? new Color(255, 214, 90) : new Color(245, 245, 250));
-            g.fill(star);
-            g.setStroke(new BasicStroke(1.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-            g.setColor(new Color(19, 18, 16, 235));
-            g.draw(star);
-            capRects.add(new Rectangle((int) (s.x - r - 5), (int) (cy - r - 5), (int) (2 * r + 10), (int) (2 * r + 10)));
+            double cy = sy - (zoom > 2.5 ? 30 : 20);
+            BufferedImage spr = starSprite(lost ? 2 : mine ? 1 : 0);
+            g.drawImage(spr, (int) Math.round(sx) - spr.getWidth() / 2, (int) Math.round(cy) - spr.getHeight() / 2, null);
+            capRects.add(new Rectangle((int) (sx - r - 5), (int) (cy - r - 5), (int) (2 * r + 10), (int) (2 * r + 10)));
             capNations.add(n.index);
-            if (mine) { g.setColor(new Color(255, 214, 90, 150)); g.setStroke(new BasicStroke(1.5f)); g.draw(new Ellipse2D.Double(s.x - r - 4, cy - r - 4, 2 * r + 8, 2 * r + 8)); }
         }
     }
 
@@ -1360,52 +1506,71 @@ final class MapPanel extends JPanel {
         return -1;
     }
 
+    /**
+     * The mode bar and the zoom buttons. Where they are is worked out every frame (clicks need it), but how they look only
+     * changes with the mode and the hovered button, so the pixels come from a cache.
+     */
     private void drawControls(Graphics2D g) {
         modeRects.clear();
         Mode[] modes = Mode.values();
         int bw = modes.length > 5 ? 92 : 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
-        Skin.shadow(g, x0, y0, total, bh + 12, 12, 5, 110);
-        Skin.plate(g, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Skin.Kind.BAR, 1f);
-        Skin.frame(g, x0 + 0.5f, y0 - 1.5f, total - 1, bh + 11, 12, false, false);
-        g.setFont(Fonts.label(14.5f));
-        for (int i = 0; i < modes.length; i++) {
-            Rectangle r = new Rectangle(x0 + 10 + i * (bw + gap), y0 + 3, bw, bh);
-            modeRects.add(r);
-            boolean on = modes[i] == mode, hov = hoverOverlay == i;
-            RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
-            if (on) {
-                Skin.plate(g, pill, Skin.Kind.GOLD, 0.8f);
-                g.setColor(new Color(255, 236, 170, 200)); g.setStroke(new BasicStroke(1.2f)); g.draw(pill);
-            } else {
-                g.setColor(hov ? new Color(255, 236, 190, 46) : new Color(0, 0, 0, 70));
-                g.fill(pill);
-                g.setColor(new Color(255, 236, 190, hov ? 110 : 40)); g.setStroke(new BasicStroke(1f)); g.draw(pill);
-            }
-            g.setColor(on ? new Color(26, 25, 23) : hov ? Color.WHITE : new Color(232, 222, 202));
-            String label = modes[i].label.replace(" / Vision", "").toUpperCase();
-            g.drawString(label, r.x + (r.width - g.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
-        }
-        // zoom and home buttons, bottom right
+        for (int i = 0; i < modes.length; i++) modeRects.add(new Rectangle(x0 + 10 + i * (bw + gap), y0 + 3, bw, bh));
         int bx = getWidth() - 52 - rightInset, by = getHeight() - 168;
         zoomInRect = new Rectangle(bx, by, 38, 38);
         zoomOutRect = new Rectangle(bx, by + 44, 38, 38);
         homeRect = new Rectangle(bx, by + 88, 38, 38);
-        String[] glyph = {"+", "-", null};
-        Rectangle[] rs = {zoomInRect, zoomOutRect, homeRect};
-        for (int i = 0; i < 3; i++) {
-            Rectangle r = rs[i];
-            boolean hov = hoverOverlay == 10 + i;
-            Skin.shadow(g, r.x, r.y, r.width, r.height, 8, 5, 110);
-            Skin.plate(g, new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8), hov ? Skin.Kind.RAISED : Skin.Kind.BAR, 1f);
-            Skin.frame(g, r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1, 8, false, hov);
-            if (glyph[i] != null) {
-                g.setFont(Fonts.ui(24f));
-                g.setColor(hov ? Color.WHITE : new Color(240, 228, 204));
-                g.drawString(glyph[i], r.x + (r.width - g.getFontMetrics().stringWidth(glyph[i])) / 2, r.y + 27);
-            } else g.drawImage(Assets.icon("castle", 24, Ui.GOLD), r.x + 7, r.y + 7, null);
-        }
+
+        final int pad = 16;                                          // room for the soft shadows
+        int hovMode = hoverOverlay >= 0 && hoverOverlay < modes.length ? hoverOverlay : -1;
+        int ax = x0 - pad, ay = y0 - pad, aw = total + 2 * pad, ah = bh + 12 + 2 * pad;
+        modeBar.paint(g, ax, ay, aw, ah, mode.ordinal() * 64 + hovMode + 1, b -> {
+            b.translate(-ax, -ay);
+            Skin.shadow(b, x0, y0, total, bh + 12, 12, 5, 110);
+            Skin.plate(b, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Skin.Kind.BAR, 1f);
+            Skin.frame(b, x0 + 0.5f, y0 - 1.5f, total - 1, bh + 11, 12, false, false);
+            b.setFont(Fonts.label(14.5f));
+            for (int i = 0; i < modes.length; i++) {
+                Rectangle r = modeRects.get(i);
+                boolean on = modes[i] == mode, hov = hovMode == i;
+                RoundRectangle2D pill = new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8);
+                if (on) {
+                    Skin.plate(b, pill, Skin.Kind.GOLD, 0.8f);
+                    b.setColor(new Color(255, 236, 170, 200)); b.setStroke(new BasicStroke(1.2f)); b.draw(pill);
+                } else {
+                    b.setColor(hov ? new Color(255, 236, 190, 46) : new Color(0, 0, 0, 70));
+                    b.fill(pill);
+                    b.setColor(new Color(255, 236, 190, hov ? 110 : 40)); b.setStroke(new BasicStroke(1f)); b.draw(pill);
+                }
+                b.setColor(on ? new Color(26, 25, 23) : hov ? Color.WHITE : new Color(232, 222, 202));
+                String label = modes[i].label.replace(" / Vision", "").toUpperCase();
+                b.drawString(label, r.x + (r.width - b.getFontMetrics().stringWidth(label)) / 2, r.y + 21);
+            }
+        });
+
+        // zoom and home buttons, bottom right
+        int zx = bx - pad, zy = by - pad, zw = 38 + 2 * pad, zh = 126 + 2 * pad;
+        int hovZoom = hoverOverlay >= 10 && hoverOverlay <= 12 ? hoverOverlay - 9 : 0;
+        zoomBar.paint(g, zx, zy, zw, zh, hovZoom, b -> {
+            b.translate(-zx, -zy);
+            String[] glyph = {"+", "-", null};
+            Rectangle[] rs = {zoomInRect, zoomOutRect, homeRect};
+            for (int i = 0; i < 3; i++) {
+                Rectangle r = rs[i];
+                boolean hov = hovZoom == i + 1;
+                Skin.shadow(b, r.x, r.y, r.width, r.height, 8, 5, 110);
+                Skin.plate(b, new RoundRectangle2D.Float(r.x, r.y, r.width, r.height, 8, 8), hov ? Skin.Kind.RAISED : Skin.Kind.BAR, 1f);
+                Skin.frame(b, r.x + 0.5f, r.y + 0.5f, r.width - 1, r.height - 1, 8, false, hov);
+                if (glyph[i] != null) {
+                    b.setFont(Fonts.ui(24f));
+                    b.setColor(hov ? Color.WHITE : new Color(240, 228, 204));
+                    b.drawString(glyph[i], r.x + (r.width - b.getFontMetrics().stringWidth(glyph[i])) / 2, r.y + 27);
+                } else b.drawImage(Assets.icon("castle", 24, Ui.GOLD), r.x + 7, r.y + 7, null);
+            }
+        });
     }
+
+    private final Cache modeBar = new Cache(), zoomBar = new Cache();
 
     /** Small info card that follows the cursor: who owns the province under it and how much we actually know. */
     private void drawTooltip(Graphics2D g) {

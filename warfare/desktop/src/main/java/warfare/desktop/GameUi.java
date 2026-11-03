@@ -130,6 +130,13 @@ final class GameUi extends JPanel {
             int nw = Math.min(600, Math.max(260, W - 900));
             news.setBounds((W - nw) / 2, H - 92, nw, 30);
             modals.setBounds(0, 0, W, H);
+            // what is opaque on top of the map: the sea animation need not be repainted underneath
+            java.util.List<Rectangle> cov = new java.util.ArrayList<>();
+            cov.add(new Rectangle(0, 0, W, barH));
+            cov.add(new Rectangle(rail.getX(), rail.getY(), rail.getWidth() - 4, rail.getHeight() - 4));
+            if (sel) cov.add(new Rectangle(selectionCard.getX(), selectionCard.getY(), selectionCard.getWidth() - 5, selectionCard.getHeight() - 5));
+            if (w != null) cov.add(new Rectangle(w.getX(), w.getY(), w.getWidth() - 5, w.getHeight() - 5));
+            map.covered = cov.toArray(new Rectangle[0]);
         }
     }
 
@@ -247,7 +254,12 @@ final class GameUi extends JPanel {
         refresh();
     }
 
-    void setSpeed(int s) { speed = s; if (paused) setPaused(false); else refresh(); }
+    void setSpeed(int s) {
+        speed = s;
+        map.renderGapMs = s >= 5 ? 4500 : s == 4 ? 3000 : 1600;
+        gs.visionStride = s >= 4 ? 2 : 1;
+        if (paused) setPaused(false); else refresh();
+    }
 
     /** Timer callback: advance the simulation by elapsed real time, then repaint once. */
     void frame() {
@@ -257,8 +269,14 @@ final class GameUi extends JPanel {
         if (modals.isOpen()) return;
         acc += dt * DAYS_PER_SEC[speed - 1];
         int steps = 0;
-        while (acc >= 1 && steps < 6 && !gs.pauseRequested) { stepOnce(); acc -= 1; steps++; }
-        if (acc > 2) acc = 2;
+        // never spend more than a few milliseconds of one frame on the simulation: on a slow machine the game runs a little
+        // slower than the selected speed instead of the whole interface stuttering
+        long budgetEnd = now + 6_000_000L;
+        while (acc >= 1 && steps < 6 && !gs.pauseRequested) {
+            stepOnce(); acc -= 1; steps++;
+            if (System.nanoTime() > budgetEnd) break;
+        }
+        if (acc > 3) acc = 3;
         if (steps > 0) finishFrame(steps);
         frames++; frameNsTotal += System.nanoTime() - now;
     }

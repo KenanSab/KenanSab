@@ -28,6 +28,7 @@ public final class GameState implements Serializable {
     public final NationState[] ns;
     public final boolean[][] war, ally, secret, sanction;
     public final float[][] opinion;
+    transient float[][] relStatic;                  // see Relations.statics
     public final int[][] peaceCooldown, allianceCooldown, warStart, truceUntil, offerCooldown;
     public int lastPeaceOfferDay = -1000;
     public final List<Deal> deals = new ArrayList<>();
@@ -43,6 +44,8 @@ public final class GameState implements Serializable {
     public final List<Combat.Report> reports = new ArrayList<>();
     public final List<GameEvent> pendingEvents = new ArrayList<>();
     public boolean pauseRequested;
+    /** The player's vision is recomputed every this many days (the interface raises it at fast speeds). */
+    public int visionStride = 1;
     public boolean ironman;
     // achievement statistics for the player
     public int stCaptures, stBattlesWon, stTacticWins, stAmbushWins, stCapitals, stNukes;

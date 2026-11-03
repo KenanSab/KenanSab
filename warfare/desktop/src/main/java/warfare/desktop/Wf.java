@@ -365,21 +365,24 @@ final class Wf {
             addMouseWheelListener(e -> {});
         }
 
+        private final Cache face = new Cache();
+
         @Override protected void paintComponent(Graphics g0) {
             Graphics2D g = (Graphics2D) g0.create();
-            quality(g);
             int w = getWidth(), h = getHeight();
-            Skin.shadow(g, 2, 2, w - 8, h - 8, 8, 6, 120);
-            RoundRectangle2D body = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
-            Skin.plate(g, body, Skin.Kind.PANEL, 1f);
-            // header band
-            Shape old = g.getClip();
-            g.clip(body);
-            g.setPaint(new GradientPaint(0, 0, new Color(255, 255, 255, 14), 0, 56, new Color(255, 255, 255, 0)));
-            g.fillRect(0, 0, w, 56);
-            g.setClip(old);
-            Skin.rule(g, 16, 55, Math.max(60, (w - 4) * 0.62f));
-            Skin.frame(g, 0.5f, 0.5f, w - 5, h - 5, 8, true, false);
+            face.paint(g, 0, 0, w, h, null, b -> {
+                Skin.shadow(b, 2, 2, w - 8, h - 8, 8, 6, 120);
+                RoundRectangle2D body = new RoundRectangle2D.Float(0, 0, w - 4, h - 4, 8, 8);
+                Skin.plate(b, body, Skin.Kind.PANEL, 1f);
+                // header band
+                Shape old = b.getClip();
+                b.clip(body);
+                b.setPaint(new GradientPaint(0, 0, new Color(255, 255, 255, 14), 0, 56, new Color(255, 255, 255, 0)));
+                b.fillRect(0, 0, w, 56);
+                b.setClip(old);
+                Skin.rule(b, 16, 55, Math.max(60, (w - 4) * 0.62f));
+                Skin.frame(b, 0.5f, 0.5f, w - 5, h - 5, 8, true, false);
+            });
             g.dispose();
         }
 

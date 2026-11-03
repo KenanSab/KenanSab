@@ -70,19 +70,22 @@ final class Hud {
 
     // ------------------------------------------------------------------ the bar itself
     static final class TopBar extends JComponent {
+        private final Cache face = new Cache();
+
         @Override protected void paintComponent(Graphics g0) {
             Graphics2D g = (Graphics2D) g0.create();
-            Wf.quality(g);
             int w = getWidth(), h = BAR_H;
-            g.setPaint(new GradientPaint(0, 0, new Color(24, 25, 28, 246), 0, h, new Color(15, 16, 18, 238)));
-            g.fillRect(0, 0, w, h);
-            g.setColor(new Color(255, 255, 255, 16));
-            g.fillRect(0, 0, w, 1);
-            // brass hairline with a soft glow beneath it
-            g.setPaint(new GradientPaint(0, 0, new Color(217, 178, 94, 0), w * 0.5f, 0, new Color(217, 178, 94, 150), true));
-            g.fillRect(0, h - 1, w, 1);
-            g.setPaint(new GradientPaint(0, h, new Color(0, 0, 0, 120), 0, h + 10, new Color(0, 0, 0, 0)));
-            g.fillRect(0, h, w, 10);
+            face.paint(g, 0, 0, w, h + 10, null, b -> {
+                b.setPaint(new GradientPaint(0, 0, new Color(24, 25, 28, 246), 0, h, new Color(15, 16, 18, 238)));
+                b.fillRect(0, 0, w, h);
+                b.setColor(new Color(255, 255, 255, 16));
+                b.fillRect(0, 0, w, 1);
+                // brass hairline with a soft glow beneath it
+                b.setPaint(new GradientPaint(0, 0, new Color(217, 178, 94, 0), w * 0.5f, 0, new Color(217, 178, 94, 150), true));
+                b.fillRect(0, h - 1, w, 1);
+                b.setPaint(new GradientPaint(0, h, new Color(0, 0, 0, 120), 0, h + 10, new Color(0, 0, 0, 0)));
+                b.fillRect(0, h, w, 10);
+            });
             g.dispose();
         }
         @Override public boolean contains(int x, int y) { return y < BAR_H; }   // the glow strip below does not swallow map clicks

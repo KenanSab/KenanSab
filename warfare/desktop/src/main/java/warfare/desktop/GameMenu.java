@@ -85,6 +85,11 @@ final class GameMenu {
         col.add(slider("Music", Settings.music, v -> Settings.music = v));
         col.add(slider("Sound effects", Settings.sfx, v -> Settings.sfx = v));
         col.add(Ui.label(Audio.get().isAvailable() ? "Audio device ready." : "No audio device detected (the game stays silent).", 12.5f, Ui.MUTED));
+        col.add(Ui.section("Graphics"));
+        col.add(Ui.label("Water, cloud and glitter animation", 13f, Ui.TEXT));
+        col.add(Ui.gap(0, 4));
+        col.add(new Wf.Segmented(new String[]{"Auto", "Always on", "Off"}, Settings.graphics, i -> Settings.graphics = i));
+        col.add(Ui.label("Auto turns the animation down by itself when the game is struggling to keep up.", 12.5f, Ui.MUTED));
         col.add(Ui.section("Gameplay"));
         col.add(Wf.toggle("Autosave every 30 days", Settings.autosave, on -> Settings.autosave = on));
         col.add(Ui.gap(0, 6));

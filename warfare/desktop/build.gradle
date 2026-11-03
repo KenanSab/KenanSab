@@ -10,7 +10,7 @@ test { maxHeapSize = '1536m' }
 application {
     mainClass = 'warfare.desktop.WarfareApp'
     applicationName = 'warfare'
-    applicationDefaultJvmArgs = ['-Xmx2g']
+    applicationDefaultJvmArgs = ['-Xmx2g', '-Xms768m', '-XX:+UseG1GC', '-XX:MaxGCPauseMillis=30']
 }
 
 // ship the generated map, fonts, icons and flags next to the jars
@@ -27,5 +27,5 @@ tasks.register('packageApp', Exec) {
     commandLine 'jpackage', '--type', 'app-image', '--name', 'Warfare', '--app-version', '0.1.0',
             '--input', new File(install, 'lib').path, '--main-jar', 'desktop.jar', '--main-class', 'warfare.desktop.WarfareApp',
             '--dest', dest.path, '--app-content', new File(install, 'assets').path,
-            '--java-options', '-Xmx2g'
+            '--java-options', '-Xmx2g', '--java-options', '-Xms768m', '--java-options', '-XX:MaxGCPauseMillis=30'
 }
