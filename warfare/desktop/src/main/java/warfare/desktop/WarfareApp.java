@@ -221,6 +221,7 @@ public final class WarfareApp {
         if (!foeTag.equals("none")) gs.declareWar(me, world.nationByTag.get(foeTag));
         MapPanel.Mode mode = MapPanel.Mode.valueOf(args.length > 5 ? args[5] : "POLITICAL");
         Map<String, String> o = options(args, 6);
+        final int shotW = o.containsKey("size") ? Integer.parseInt(o.get("size").split("x")[0]) : 1500, shotH = o.containsKey("size") ? Integer.parseInt(o.get("size").split("x")[1]) : 900;
         int focus = -1;
         for (int i = 0; i < days; i++) {
             if (i % 3 == 0) for (Army a : gs.armies.values()) if (a.owner == me && a.path.isEmpty() && a.battleId < 0) Ai.manageArmies(gs, me);
@@ -232,7 +233,7 @@ public final class WarfareApp {
         SwingUtilities.invokeAndWait(() -> {
             GameUi ui = new GameUi(gs, null);
             Settings.tutorial = false;
-            ui.setSize(1500, 900);
+            ui.setSize(shotW, shotH);
             layoutAll(ui);
             ui.map.centerOn(fp >= 0 ? fp : world.nations.get(me).capital, Double.parseDouble(o.getOrDefault("zoom", String.valueOf(MapPanel.START_ZOOM))));
             ui.map.setMode(mode);
@@ -297,7 +298,7 @@ public final class WarfareApp {
             GameUi ui = GameUi.current;
             layoutAll(ui);
             ui.map.flushLayers();
-            img[0] = new BufferedImage(1500, 900, BufferedImage.TYPE_INT_RGB);
+            img[0] = new BufferedImage(shotW, shotH, BufferedImage.TYPE_INT_RGB);
             Graphics2D g = img[0].createGraphics();
             ui.paint(g);
             g.dispose();

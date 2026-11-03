@@ -45,7 +45,8 @@ final class MapPanel extends JPanel {
     Runnable onOrder = () -> {};
     Tutorial tutorial;
     int raidArmy = -1;
-    int rightInset;
+    int rightInset;                     // width taken on the right by the selection card (toasts keep clear of it)
+    int controlsInset;                  // how far the zoom buttons sit from the right edge
     java.util.function.IntConsumer onCapital = n -> {};
     private final List<Rectangle> capRects = new ArrayList<>(), modeRects = new ArrayList<>();
     private final List<Integer> capNations = new ArrayList<>();
@@ -308,6 +309,23 @@ final class MapPanel extends JPanel {
 
     void viewChanged() { repaint(); }
 
+    /** The part of the world on screen, in map units (the minimap draws it as a frame). */
+    java.awt.geom.Rectangle2D.Double viewMapRect() { return new java.awt.geom.Rectangle2D.Double(-ox / zoom, -oy / zoom, getWidth() / zoom, getHeight() / zoom); }
+
+    /** Moves the view so that a point of the world lies in the middle of the screen. */
+    void centerOnMapPoint(double mx, double my) {
+        if (getWidth() < 2 || getHeight() < 2) return;
+        targetZoom = -1; velX = velY = 0;
+        ox = getWidth() / 2.0 - mx * zoom; oy = getHeight() / 2.0 - my * zoom;
+        clampView(); repaint();
+    }
+
+    /** Current province colours as the map shows them (the minimap uses the same ones). */
+    int[] fillColours() { return fillArgb; }
+
+    /** Called after a refresh that changed any colour. */
+    Runnable onColours;
+
     void pan(double dx, double dy) { ox += dx; oy += dy; clampView(); repaint(); }
 
     void zoomBy(double f) {
@@ -337,9 +355,10 @@ final class MapPanel extends JPanel {
             if (lastOwner[p] >= 0 && ko >= 0 && ko != lastOwner[p] && in.quality[p] > 0 && flashes.size() < 40) flashes.add(new long[]{p, nowMs});
             lastOwner[p] = ko;
         }
+        boolean changed = false;
         for (int p = 0; p < fillArgb.length; p++) {
             int c = colorOf(p, in, me);
-            if (c != fillArgb[p]) { fillArgb[p] = c; markFill(p); }
+            if (c != fillArgb[p]) { fillArgb[p] = c; markFill(p); changed = true; }
         }
         for (int a = 0; a < arcClass.length; a++) {
             int p1 = shapes.p1[a], p2 = shapes.p2[a];
@@ -351,9 +370,10 @@ final class MapPanel extends JPanel {
                 else if (s1 != s2) cls = 1;
                 else cls = (byte) (in.knownOwner[p1] != in.knownOwner[p2] ? 2 : 3);
             }
-            if (cls != arcClass[a]) { arcClass[a] = cls; markArc(a); }
+            if (cls != arcClass[a]) { arcClass[a] = cls; markArc(a); changed = true; }
         }
         applyPending();
+        if (changed && onColours != null) onColours.run();
     }
 
     /** Patches the cached layers in place for small changes; hands big ones (mode switch, big conquests) to the worker. */
@@ -1516,7 +1536,7 @@ final class MapPanel extends JPanel {
         int bw = modes.length > 5 ? 92 : 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
         for (int i = 0; i < modes.length; i++) modeRects.add(new Rectangle(x0 + 10 + i * (bw + gap), y0 + 3, bw, bh));
-        int bx = getWidth() - 52 - rightInset, by = getHeight() - 168;
+        int bx = getWidth() - 52 - controlsInset, by = getHeight() - 168;
         zoomInRect = new Rectangle(bx, by, 38, 38);
         zoomOutRect = new Rectangle(bx, by + 44, 38, 38);
         homeRect = new Rectangle(bx, by + 88, 38, 38);

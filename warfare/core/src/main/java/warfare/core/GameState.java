@@ -944,11 +944,22 @@ public final class GameState implements Serializable {
     }
 
     // ------------------------------------------------------------------ persistence
-    public void save(Path file) throws IOException {
+    public void save(Path file) throws IOException { write(file, snapshot()); }
+
+    /** The game serialised into memory (tens of milliseconds); the bytes can be written to disk on another thread. */
+    public byte[] snapshot() throws IOException {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream(1 << 22);
+        try (ObjectOutputStream out = new ObjectOutputStream(bytes)) { out.writeObject(this); }
+        return bytes.toByteArray();
+    }
+
+    /** Writes a save through a temporary file, so that a crash half way never leaves a broken save behind. */
+    public static void write(Path file, byte[] data) throws IOException {
         Files.createDirectories(file.getParent());
-        try (ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(Files.newOutputStream(file)))) {
-            out.writeObject(this);
-        }
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        Files.write(tmp, data);
+        try { Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE); }
+        catch (java.nio.file.AtomicMoveNotSupportedException e) { Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING); }
     }
 
     public static GameState load(Path file, WorldData w) throws IOException, ClassNotFoundException {

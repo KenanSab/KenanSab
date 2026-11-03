@@ -31,6 +31,7 @@ final class GameUi extends JPanel {
     final EconomyPanel economy;
     final Hud hud;
     final Rail rail;
+    final MiniMap mini;
     final Modals modals = new Modals();
     final JLayeredPane layers = new JLayeredPane();
     final Wf.Window selectionCard;
@@ -47,6 +48,8 @@ final class GameUi extends JPanel {
         this.gs = gs; this.frame = frame;
         current = this;
         map = new MapPanel(gs, WarfareApp.assets);
+        mini = new MiniMap(map, gs, WarfareApp.basemap(gs.world));
+        map.onColours = mini::recolour;
         Runnable refresh = this::refresh;
         selection = new SelectionPanel(gs, map, refresh);
         production = new ProductionPanel(gs, map, refresh);
@@ -71,7 +74,7 @@ final class GameUi extends JPanel {
         layers.setLayout(new HudLayout());
         layers.add(map, JLayeredPane.DEFAULT_LAYER);
         layers.add(hud.bar, Integer.valueOf(50));
-        for (JComponent c : new JComponent[]{hud.badge, hud.plates, hud.time, rail, selectionCard, news}) layers.add(c, JLayeredPane.PALETTE_LAYER);
+        for (JComponent c : new JComponent[]{hud.badge, hud.plates, hud.time, rail, mini, selectionCard, news}) layers.add(c, JLayeredPane.PALETTE_LAYER);
         layers.add(modals, JLayeredPane.MODAL_LAYER);
         selectionCard.setVisible(false);
         add(layers, BorderLayout.CENTER);
@@ -111,24 +114,38 @@ final class GameUi extends JPanel {
             map.setBounds(0, 0, W, H);
             int barH = Hud.BAR_H;
             hud.bar.setBounds(0, 0, W, barH + 10);
-            hud.badge.setBounds(0, 0, 330, barH);
+            int badgeW = W >= 1400 ? 330 : 280;
+            hud.badge.setBounds(0, 0, badgeW, barH);
             int timeW = 206 + 48 + 12;
             hud.time.setBounds(W - timeW, 0, timeW, barH);
-            int plateX = 330, plateW = Math.max(200, W - timeW - plateX);
+            int plateX = badgeW, plateW = Math.max(200, W - timeW - plateX);
+            hud.fit(plateW);
             hud.plates.setBounds(plateX, 0, plateW, barH);
             rail.setBounds(8, barH + 14, 78, rail.getPreferredSize().height);
+            // the minimap takes the bottom-right corner when there is room beside the centred mode bar
+            int modeBarW = MapPanel.Mode.values().length * 96 + 20;
+            int free = (W - modeBarW) / 2 - 36;
+            int miniW = Math.min(MiniMap.MAX_W, free), miniH = miniW >= 160 ? MiniMap.heightFor(world(), miniW) : 0;
+            boolean miniOn = miniW >= 160 && H >= 560;
+            mini.setVisible(miniOn);
+            if (miniOn) mini.setBounds(W - 8 - miniW, H - 8 - miniH, miniW, miniH);
             boolean sel = selectionCard.isVisible();
             int selW = 410;
             map.rightInset = sel ? selW + 16 : 0;
-            if (sel) selectionCard.setBounds(W - selW - 10, barH + 12, selW, Math.max(260, H - barH - 12 - 70));
+            map.controlsInset = sel ? selW + 16 : miniOn ? miniW + 14 : 0;
+            int selBottom = miniOn ? H - 8 - miniH - 8 : H - 70;
+            if (sel) selectionCard.setBounds(W - selW - 10, barH + 12, selW, Math.max(260, selBottom - barH - 12));
             Wf.Window w = openWindow == null ? null : windows.get(openWindow);
             if (w != null) {
                 int ww = 420;
                 int avail = W - 98 - (sel ? selW + 16 : 0) - 20;
-                w.setBounds(98, barH + 14, Math.min(ww, Math.max(320, avail)), Math.max(300, H - barH - 14 - 74));
+                w.setBounds(98, barH + 14, Math.min(ww, Math.max(320, avail)), Math.max(300, H - barH - 14 - 100));
             }
+            // the headline sits above the mode bar and keeps clear of the zoom buttons
             int nw = Math.min(600, Math.max(260, W - 900));
-            news.setBounds((W - nw) / 2, H - 92, nw, 30);
+            int nx = (W - nw) / 2, room = W - 52 - map.controlsInset - 10 - nx;
+            if (nw > room) nw = Math.max(200, room);
+            news.setBounds(nx, H - 92, nw, 30);
             modals.setBounds(0, 0, W, H);
             // what is opaque on top of the map: the sea animation need not be repainted underneath
             java.util.List<Rectangle> cov = new java.util.ArrayList<>();
@@ -139,6 +156,8 @@ final class GameUi extends JPanel {
             map.covered = cov.toArray(new Rectangle[0]);
         }
     }
+
+    private warfare.core.WorldData world() { return gs.world; }
 
     /** A rounded plate showing the latest headline. */
     static final class NewsPlate extends JComponent {
@@ -318,7 +337,11 @@ final class GameUi extends JPanel {
 
     void metaChecks() {
         if (gs.day > 0 && gs.day % 30 == 0 && (Settings.autosave || gs.ironman)) {
-            try { gs.save(savePath(gs.ironman ? "ironman" : "autosave")); } catch (Exception ignored) {}
+            try {                                              // serialise now (a few ms), write the file off the interface thread
+                byte[] data = gs.snapshot();
+                java.nio.file.Path file = savePath(gs.ironman ? "ironman" : "autosave");
+                java.util.concurrent.CompletableFuture.runAsync(() -> { try { GameState.write(file, data); } catch (Exception ignored) {} });
+            } catch (Exception ignored) {}
         }
         if (gs.day % 5 == 0) {
             for (warfare.core.Achievements.Def d : Profile.check(gs)) {

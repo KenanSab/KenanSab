@@ -35,11 +35,26 @@ final class Hud {
             nuke = new Chip("nuke", Ui.RED, "Nuclear warheads"),
             decide = new Chip("tab_reports", Ui.GOLD, "Decisions are waiting - click to answer them");
 
+    private Chip[] chips;
+    private boolean compact;
+
+    /** On a narrow window the chips drop their change figures so that every resource still fits in the bar. */
+    void fit(int available) {
+        int full = 0;
+        for (Chip c : chips) if (c.isVisible()) full += c.width(false);
+        boolean want = full > available;
+        if (want == compact) return;
+        compact = want;
+        for (Chip c : chips) c.setCompact(want);
+        plates.revalidate();
+    }
+
     Hud(GameState gs, Runnable togglePause, IntConsumer setSpeed, Runnable openMenu, Runnable openCountry, Runnable openDecisions) {
         this.gs = gs;
         badge = new Badge(gs, openCountry);
         plates.setOpaque(false);
-        for (Chip c : new Chip[]{money, men, ind, oil, stab, appr, nuke, decide}) plates.add(c);
+        chips = new Chip[]{money, men, ind, oil, stab, appr, nuke, decide};
+        for (Chip c : chips) plates.add(c);
         decide.setVisible(false);
         decide.onClick(openDecisions);
         appr.onClick(openCountry);
@@ -52,6 +67,7 @@ final class Hud {
     void update(boolean paused, int level) {
         NationState s = gs.ns[gs.player];
         badge.update();
+        badge.setPaused(paused);
         speed.set(paused, level);
         money.set(String.format("%.0f", s.money), String.format("%+.1f", s.lastIncome), s.lastIncome < 0 ? Ui.RED : Ui.GREEN);
         men.set(String.format("%.0f", s.manpower), null, null);
@@ -95,7 +111,9 @@ final class Hud {
     static final class Badge extends JComponent {
         private final GameState gs;
         private String dateText = "";
-        private boolean hover;
+        private boolean hover, paused;
+
+        void setPaused(boolean p) { if (p != paused) { paused = p; repaint(); } }
 
         Badge(GameState gs, Runnable open) {
             this.gs = gs;
@@ -141,6 +159,19 @@ final class Hud {
             g.setFont(Fonts.ui(12.5f));
             g.setColor(Ui.MUTED);
             g.drawString(dateText, 82, 49);
+            if (paused) {                                    // so nobody wonders why the days stand still
+                int dx = 82 + g.getFontMetrics().stringWidth(dateText) + 10;
+                g.setFont(Fonts.label(11.5f));
+                String t = "PAUSED";
+                int tw = g.getFontMetrics().stringWidth(t) + 14;
+                g.setColor(new Color(Skin.BRASS.getRed(), Skin.BRASS.getGreen(), Skin.BRASS.getBlue(), 46));
+                g.fill(new RoundRectangle2D.Float(dx, 37, tw, 16, 8, 8));
+                g.setColor(new Color(Skin.BRASS.getRed(), Skin.BRASS.getGreen(), Skin.BRASS.getBlue(), 150));
+                g.setStroke(new BasicStroke(1f));
+                g.draw(new RoundRectangle2D.Float(dx + 0.5f, 37.5f, tw - 1, 15, 8, 8));
+                g.setColor(Skin.BRASS_HI);
+                g.drawString(t, dx + 7, 49);
+            }
             g.setColor(new Color(255, 255, 255, 22));
             g.fillRect(w - 1, 12, 1, h - 24);
             g.dispose();
@@ -165,13 +196,21 @@ final class Hud {
             });
         }
 
+        private boolean compact;
+
+        void setCompact(boolean c) { if (compact != c) { compact = c; setPreferredSize(new Dimension(width(compact), BAR_H)); revalidate(); repaint(); } }
+
+        /** Width of the chip with or without its change figure. */
+        int width(boolean withoutDelta) {
+            FontMetrics fm = getFontMetrics(Fonts.ui(16f).deriveFont(Font.BOLD));
+            return 52 + fm.stringWidth(value) + (delta == null || withoutDelta ? 0 : getFontMetrics(Fonts.ui(12f)).stringWidth(delta) + 8) + 12;
+        }
+
         void set(String v, String d, Color dc) {
             boolean same = v.equals(value) && java.util.Objects.equals(d, delta);
             value = v; delta = d; deltaColor = dc == null ? Ui.MUTED : dc;
             if (same) return;
-            FontMetrics fm = getFontMetrics(Fonts.ui(16f).deriveFont(Font.BOLD));
-            int w = 52 + fm.stringWidth(v) + (d == null ? 0 : getFontMetrics(Fonts.ui(12f)).stringWidth(d) + 8) + 12;
-            setPreferredSize(new Dimension(w, BAR_H));
+            setPreferredSize(new Dimension(width(compact), BAR_H));
             revalidate(); repaint();
         }
 
@@ -188,7 +227,7 @@ final class Hud {
             FontMetrics fm = g.getFontMetrics();
             int x = 48, y = h / 2 + fm.getAscent() / 2 - 2;
             g.drawString(value, x, y);
-            if (delta != null) {
+            if (delta != null && !compact) {
                 g.setFont(Fonts.ui(12f));
                 g.setColor(deltaColor);
                 g.drawString(delta, x + fm.stringWidth(value) + 6, y);

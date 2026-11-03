@@ -89,7 +89,7 @@ final class GameMenu {
         col.add(Ui.label("Water, cloud and glitter animation", 13f, Ui.TEXT));
         col.add(Ui.gap(0, 4));
         col.add(new Wf.Segmented(new String[]{"Auto", "Always on", "Off"}, Settings.graphics, i -> Settings.graphics = i));
-        col.add(Ui.label("Auto turns the animation down by itself when the game is struggling to keep up.", 12.5f, Ui.MUTED));
+        col.add(Ui.label("Auto lowers the animation by itself if the game struggles.", 12.5f, Ui.MUTED));
         col.add(Ui.section("Gameplay"));
         col.add(Wf.toggle("Autosave every 30 days", Settings.autosave, on -> Settings.autosave = on));
         col.add(Ui.gap(0, 6));

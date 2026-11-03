@@ -303,4 +303,41 @@ class UiSelfTest {
         assertEquals("FRA", world.nations.get(chosen[0].nation()).tag, "France is preselected");
         assertTrue(errors.isEmpty(), errors.toString());
     }
+
+    @Test
+    void minimapNavigatesAndLayoutHoldsOnSmallerWindows() throws Exception {
+        GameState gs = new GameState(world, world.nationByTag.get("FRA"), 5);
+        JFrame[] frame = new JFrame[1];
+        GameUi ui = open(gs, frame);
+        assertTrue(ui.mini.isVisible(), "the minimap shows on a normal window");
+        assertTrue(ui.mini.getWidth() <= MiniMap.MAX_W && ui.mini.getHeight() > 60);
+        // pressing on the minimap moves the main view there
+        double tx = 0.72 * world.width, ty = 0.40 * world.height;
+        SwingUtilities.invokeAndWait(() -> {
+            double sx = (ui.mini.getWidth() - 2 * MiniMap.PAD) / (double) world.width, sy = (ui.mini.getHeight() - 2 * MiniMap.PAD) / (double) world.height;
+            ui.mini.dispatchEvent(new MouseEvent(ui.mini, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), MouseEvent.BUTTON1_DOWN_MASK,
+                    (int) Math.round(MiniMap.PAD + tx * sx), (int) Math.round(MiniMap.PAD + ty * sy), 1, false, MouseEvent.BUTTON1));
+        });
+        java.awt.geom.Rectangle2D.Double v = ui.map.viewMapRect();
+        assertEquals(tx, v.x + v.width / 2, 12, "view is centred on the clicked point (x)");
+        assertEquals(ty, v.y + v.height / 2, 12, "view is centred on the clicked point (y)");
+
+        // an open window and the sea animation: only strips around it are repainted, nothing may throw
+        SwingUtilities.invokeAndWait(() -> ui.pick("economy"));
+        Thread.sleep(500);
+        assertTrue(ui.map.covered.length >= 3, "top bar, rail and window are registered as covering the map");
+
+        // a smaller window: the minimap shrinks, every resource chip stays inside the bar
+        SwingUtilities.invokeAndWait(() -> { frame[0].setSize(1280, 720); frame[0].validate(); });
+        Thread.sleep(300);
+        SwingUtilities.invokeAndWait(() -> ui.layers.doLayout());
+        assertTrue(ui.mini.isVisible() && ui.mini.getWidth() < MiniMap.MAX_W, "the minimap shrinks to leave the mode bar alone");
+        for (Component c : ui.hud.plates.getComponents()) if (c.isVisible()) assertTrue(c.getY() < Hud.BAR_H && c.getX() + c.getWidth() <= ui.hud.plates.getWidth() + 1, "chip fits in the bar: " + c);
+        // very small: the minimap steps aside
+        SwingUtilities.invokeAndWait(() -> { frame[0].setSize(1000, 640); frame[0].validate(); ui.layers.doLayout(); });
+        assertFalse(ui.mini.isVisible(), "no minimap when there is no room beside the mode bar");
+
+        SwingUtilities.invokeAndWait(() -> frame[0].dispose());
+        assertTrue(errors.isEmpty(), "uncaught UI exceptions: " + errors);
+    }
 }

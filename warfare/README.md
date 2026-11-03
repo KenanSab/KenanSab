@@ -23,10 +23,14 @@ Needs Java 21 (JDK) and a display.
 | Left-click a capital star | that country's screen: overview, government and approval, relations, military |
 | Wheel, +/- | zoom |
 | Drag, arrows, WASD | pan |
+| Click or drag on the minimap (bottom right) | jump anywhere in the world; scroll over it to zoom |
 | M | cycle map mode (political, terrain, intel, diplomatic) |
 | E | economy panel (tax, budget sliders, policies, ledger, build) |
 | Esc | deselect army |
 | F3 | performance overlay (days/s, frame times) |
+
+Slow or laggy? Menu > Settings > **Graphics**: *Auto* (default) lowers the sea animation by itself when frames get slow,
+*Off* freezes it. The game wants about 1 GB of RAM; it starts with `-Xmx2g`.
 
 Pick a tactic card per army in the **Selection** tab, or leave it on **General (auto)**, which only uses what your
 intelligence shows. A tutorial walks through the first minutes (Help > Restart tutorial).
@@ -44,7 +48,7 @@ intelligence shows. A tutorial walks through the first minutes (Help > Restart t
 ## Develop
 
 ```bash
-./gradlew :core:test                                  # simulation tests (32)
+./gradlew :core:test                                  # simulation tests (35)
 xvfb-run -a ./gradlew :desktop:test                   # audio, map audit, real-window UI tests and a random-input fuzz test (needs a display or xvfb)
 ./gradlew :desktop:installDist                        # runnable distribution in desktop/build/install/warfare
 ./gradlew :desktop:packageApp                         # native app image with bundled runtime (run on the target OS)
@@ -63,13 +67,14 @@ Aimed at players of Age of History 3 and Hearts of Iron IV who want more uncerta
 * **Peace you have to win.** The other side weighs land held, armies, exhaustion, stability and a fallen capital; it can refuse with reasons, make counter-offers, and you can paint the provinces you want with the **peace brush**.
 * **A shadow war.** Agent networks, cyberattacks, disinformation, insurgents, sabotage and technology theft, with attribution as its own fog: an operation may be traced to you, go unnoticed or throw suspicion on a third country.
 * **Scenarios.** Start in a quiet world, with today's flashpoints already burning, or with the world on fire.
-* **Map layers** for political, terrain, intel, diplomatic, population, economy, unrest and resources, plus seasons, rivers, lakes and cities on real Natural Earth data.
+* **Map layers** for political, terrain, intel, diplomatic, population, economy, unrest and resources, plus seasons, rivers, lakes and cities on real Natural Earth data, and a **minimap** that shows the world as your intelligence sees it.
 
 Not here yet: 3D unit models, multiplayer, division templates, naval and air campaigns in depth, focus trees, mods.
 
 ## Screenshots
 
-![Europe at war](docs/screens/map_europe.jpg)
+![Europe at war, with the minimap](docs/screens/map_europe.jpg)
+![A smaller window: the layout adapts](docs/screens/small_window.jpg)
 ![The opening view: rivers, cities, region names, fine terrain](docs/screens/map_closeup.jpg)
 ![Winter comes to the north](docs/screens/map_winter.jpg)
 ![Peace brush: paint the provinces you want](docs/screens/peace_brush.jpg)

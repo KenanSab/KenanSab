@@ -73,3 +73,21 @@ Provinces are drawn as antialiased vector shapes (traced, simplified and Chaikin
 satellite-style underlay (blended terrain colours, noise hillshade, coastal ocean depth). Fonts are Barlow / Barlow
 Condensed / Bebas Neue (SIL OFL, `assets/fonts`); UI theme is FlatLaf (Apache 2.0). Real satellite imagery was not
 reachable from the build environment, so relief is procedural.
+
+## Performance notes
+
+Measured with Java Flight Recorder and per-method timers on a software-rendered virtual display, so absolute numbers on a
+real PC with a GPU are better, but the proportions hold.
+
+* **Rendering is cached and throttled.** The map is rendered by one background thread into layers; the interface thread only
+  blits them. Colour and season changes re-render at most every 1.6 s (every 3-4.5 s at speeds 4 and 5), small fog changes
+  patch the layers in place, and the big images are recycled to keep garbage collection short.
+* **Static overlays are images.** Vignette, mode bar, zoom buttons, rail, top bar, window frames and minimap frame are
+  painted once into a `Cache` at the display's resolution and blitted afterwards. Capital stars and labels are sprites.
+* **Ambient animation is cheap.** The sea runs at 15 frames a second, does not repaint under opaque windows or the HUD, and
+  an adaptive quality level (settings: Graphics) removes clouds and glitter, then the swell, if frames get slow.
+* **The simulation has a budget.** At most 6 ms of game days per frame; AI vision runs every third day, the player's every
+  other day at speeds 4 and 5; per-pair opinion baselines are cached.
+* **Autosave** serialises in memory (a few ms) and writes the file on another thread.
+* **Minimap.** One pixel lookup per minimap pixel through the province id map, tinted with the same colours as the main map.
+

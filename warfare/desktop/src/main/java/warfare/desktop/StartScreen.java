@@ -149,7 +149,8 @@ final class StartScreen extends JPanel {
         Wf.Button go = Wf.primary("Start campaign", "battle", () -> onStart.accept(new Choice(selected.index, ironman.isOn(), warfare.core.Scenario.values()[scenarioPick.selected()])));
         go.setFont(Fonts.label(20f));
         go.setPreferredSize(new Dimension(340, 52));
-        go.setMaximumSize(new Dimension(340, 52));
+        go.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        go.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(go);
         preview.add(Box.createVerticalGlue());
         preview.add(card);
