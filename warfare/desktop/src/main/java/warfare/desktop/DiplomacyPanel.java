@@ -74,7 +74,7 @@ final class DiplomacyPanel extends JPanel {
         action(grid, "Buy oil", "oil", n -> gs.oilDeal(n, me), Wf.Kind.NORMAL);
         action(grid, "Send aid", "money", n -> gs.sendAid(me, n, 30), Wf.Kind.NORMAL);
         action(grid, "Send arms", "armor", n -> gs.armsDeal(me, n), Wf.Kind.NORMAL);
-        action(grid, "Agent", "spy", n -> gs.assignAgent(me, n), Wf.Kind.NORMAL);
+        action(grid, "Operations", "spy", n -> { OpsCards.open(GameUi.current, n); return null; }, Wf.Kind.NORMAL);
         Wf.Button open = Wf.ghost("Country screen", "castle", () -> { if (selected >= 0) onOpen.accept(selected); });
         grid.add(open);
         actionButtons.add(open);

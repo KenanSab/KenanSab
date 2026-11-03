@@ -53,7 +53,9 @@ public final class WarfareApp {
             String forced = null;
             for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--nation")) forced = args[i + 1];
             if (forced == null && java.util.Arrays.asList(args).contains("--smoke")) forced = "FRA";   // unattended runs skip the menu
-            if (forced != null) start(f, world, new StartScreen.Choice(world.nationByTag.get(forced), false)); else showStart(f, world);
+            warfare.core.Scenario scenario = warfare.core.Scenario.QUIET;
+            for (int i = 0; i < args.length - 1; i++) if (args[i].equals("--scenario")) scenario = warfare.core.Scenario.valueOf(args[i + 1].toUpperCase());
+            if (forced != null) start(f, world, new StartScreen.Choice(world.nationByTag.get(forced), false, scenario)); else showStart(f, world);
             f.setVisible(true);
             for (int i = 0; i < args.length; i++) if (args[i].equals("--smoke")) smoke(f, i + 1 < args.length && args[i + 1].matches("\\d+") ? Integer.parseInt(args[i + 1]) : 8);
         });
@@ -164,7 +166,7 @@ public final class WarfareApp {
     }
 
     static void start(JFrame f, WorldData world, StartScreen.Choice choice) {
-        GameState gs = new GameState(world, choice.nation(), System.nanoTime());
+        GameState gs = new GameState(world, choice.nation(), System.nanoTime(), choice.scenario());
         gs.ironman = choice.ironman();
         install(f, new GameUi(gs, f));
     }
@@ -259,6 +261,8 @@ public final class WarfareApp {
                 } else {
                     switch (modal) {
                         case "menu" -> GameMenu.open(ui);
+                        case "tactic" -> ui.pushTacticHand("Battle at Lorraine (FOREST).\n1st Army: 9 battalions, morale 82. Germany fields 11 battalions - composition known.\n\nPlay a tactic card, or let the General decide.", warfare.core.Tactic.FLANKING, i -> {}, () -> {});
+                        case "ops" -> OpsCards.open(ui, world.nationByTag.get(foeTag));
                         case "settings" -> ui.modals.push(GameMenu.settings(ui));
                         case "achievements" -> ui.modals.push(GameMenu.achievements(ui));
                         case "controls" -> ui.modals.push(GameMenu.controls(ui));

@@ -340,6 +340,10 @@ final class GameUi extends JPanel {
                 Audio.get().play(Synth.Sfx.WAR_HORN);
                 if (s.contains("on " + me3 + "!")) map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle", "ALERT");
             }
+            else if (s.contains("COVERT:") && s.contains(me3)) {
+                Audio.get().play(Synth.Sfx.ALERT);
+                map.toast("Covert operation", s.substring(s.indexOf("COVERT:") + 8), "spy", "INTEL ALERT");
+            }
             else if (s.contains("captures") && s.contains(me3)) Audio.get().play(Synth.Sfx.CAPTURE);
             else if (s.contains("Battle begins")) Audio.get().play(Synth.Sfx.BATTLE);
             else if (s.contains("ALERT")) Audio.get().play(Synth.Sfx.ALERT);
@@ -421,14 +425,27 @@ final class GameUi extends JPanel {
             else if (s.composition != null) sb.append(gs.nationName(s.owner)).append(" fields ").append((int) Math.round(sum(s.composition))).append(" battalions, composition known.");
             else sb.append(s.ownerKnown ? gs.nationName(s.owner) : "An unidentified force").append(" - roughly ").append((int) Math.max(1, Math.round(s.strengthEstimate / 11.0))).append(" battalions.");
         }
-        sb.append("\n\nChoose a tactic card, or let the General decide.");
-        List<String> opts = new ArrayList<>();
-        for (Tactic t : Tactic.values()) opts.add(t.label);
-        opts.add("General decides (auto)");
-        choose("Choose tactic", "battle", sb.toString(), opts, i -> {
+        sb.append("\n\nPlay a tactic card, or let the General decide.");
+        Tactic advice = null;
+        if (enemy != null) {
+            try { advice = TacticAdvisor.choose(gs, a, enemy, b != null && b.attacker == a.id); } catch (RuntimeException ignored) { }
+        }
+        pushTacticHand(sb.toString(), advice, i -> {
             if (i < Tactic.values().length) gs.setTactic(a, Tactic.values()[i]); else gs.setGeneralMode(a);
             refresh(); showNextPrompt(manual);
         }, () -> dismissed.add(a));
+    }
+
+    /** The tactic card hand as a modal. Also used by screenshots with sample text. */
+    void pushTacticHand(String text, Tactic advice, IntConsumer pick, Runnable onDismiss) {
+        JPanel body = new JPanel();
+        body.setOpaque(false);
+        body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+        body.setBorder(BorderFactory.createEmptyBorder(8, 18, 18, 18));
+        body.add(Ui.label("<html><div style='width:900px'>" + SidePanels.esc(text).replace("\n", "<br>") + "</div></html>", 14f, Ui.TEXT));
+        body.add(Ui.gap(0, 10));
+        body.add(new TacticHand(advice, i -> { modals.pop(); pick.accept(i); }));
+        modals.push(Modals.card("Choose your tactic", "battle", body, 1020, 0, () -> { modals.pop(); onDismiss.run(); }));
     }
 
     static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }

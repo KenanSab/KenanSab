@@ -18,7 +18,9 @@ import java.util.function.Consumer;
 
 /** Main menu / new-game screen: the world map dimmed behind a title, a nation list and a preview card. */
 final class StartScreen extends JPanel {
-    record Choice(int nation, boolean ironman) {}
+    record Choice(int nation, boolean ironman, warfare.core.Scenario scenario) {
+        Choice(int nation, boolean ironman) { this(nation, ironman, warfare.core.Scenario.QUIET); }
+    }
 
     private final WorldData world;
     private final Consumer<Choice> onStart;
@@ -28,6 +30,8 @@ final class StartScreen extends JPanel {
     private final JTextField search = Wf.field("Search nations...");
     private final JPanel preview = new JPanel();
     private final Wf.Toggle ironman = Wf.toggle("Ironman: one life, autosave only", false, null);
+    private final JLabel scenarioBlurb = Ui.label(warfare.core.Scenario.QUIET.blurb, 12.5f, Ui.MUTED);
+    private final Wf.Segmented scenarioPick = new Wf.Segmented(new String[]{"Quiet world", "Flashpoints", "World on fire"}, 0, i -> scenarioBlurb.setText("<html><div style='width:470px'>" + warfare.core.Scenario.values()[i].blurb + "</div></html>"));
     private WorldData.NationInfo selected;
     private BufferedImage backdrop;      // pre-lit world strip that drifts slowly behind the menu
     private BufferedImage cachedStrip;
@@ -133,10 +137,16 @@ final class StartScreen extends JPanel {
         stats.add(stat("nuke", n.nukes > 0 ? Ui.RED : Ui.MUTED, "Nuclear warheads", n.nukes > 0 ? String.valueOf(n.nukes) : "none"));
         stats.add(stat("oil", new Color(200, 160, 120), "Oil production", n.oilProduction > 0 ? String.format("%.1f", n.oilProduction) : "none"));
         card.add(stats);
-        card.add(Ui.gap(0, 18));
+        card.add(Ui.gap(0, 14));
+        card.add(Ui.label("SCENARIO", 12.5f, Ui.MUTED));
+        card.add(Ui.gap(0, 4));
+        card.add(scenarioPick);
+        card.add(Ui.gap(0, 4));
+        card.add(scenarioBlurb);
+        card.add(Ui.gap(0, 12));
         card.add(ironman);
         card.add(Ui.gap(0, 14));
-        Wf.Button go = Wf.primary("Start campaign", "battle", () -> onStart.accept(new Choice(selected.index, ironman.isOn())));
+        Wf.Button go = Wf.primary("Start campaign", "battle", () -> onStart.accept(new Choice(selected.index, ironman.isOn(), warfare.core.Scenario.values()[scenarioPick.selected()])));
         go.setFont(Fonts.label(20f));
         go.setPreferredSize(new Dimension(340, 52));
         go.setMaximumSize(new Dimension(340, 52));
@@ -298,7 +308,7 @@ final class StartScreen extends JPanel {
             add(Ui.label(n.name, 16f, Ui.TEXT), BorderLayout.CENTER);
             if (n.nukes > 0) add(new JLabel(new ImageIcon(Assets.icon("nuke", 18, Ui.RED))), BorderLayout.EAST);
             addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { Audio.get().play(Synth.Sfx.CLICK); select(n); if (e.getClickCount() == 2) onStart.accept(new Choice(n.index, ironman.isOn())); }
+                @Override public void mouseClicked(MouseEvent e) { Audio.get().play(Synth.Sfx.CLICK); select(n); if (e.getClickCount() == 2) onStart.accept(new Choice(n.index, ironman.isOn(), warfare.core.Scenario.values()[scenarioPick.selected()])); }
                 @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
                 @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
             });

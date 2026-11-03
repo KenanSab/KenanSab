@@ -49,7 +49,9 @@ public final class GameState implements Serializable {
     public final Set<Integer> awaitingTactic = new LinkedHashSet<>();
 
     // ------------------------------------------------------------------ setup
-    public GameState(WorldData w, int player, long seed) {
+    public GameState(WorldData w, int player, long seed) { this(w, player, seed, Scenario.QUIET); }
+
+    public GameState(WorldData w, int player, long seed, Scenario scenario) {
         this.world = w; this.N = w.nations.size(); this.P = w.provinces.size();
         this.player = player; this.rng = new Random(seed);
         owner = new int[P]; controller = new int[P];
@@ -102,6 +104,7 @@ public final class GameState implements Serializable {
         }
         Relations.init(this);
         initForces();
+        scenario.apply(this);
         Vision.updateAll(this);
     }
 
@@ -438,6 +441,11 @@ public final class GameState implements Serializable {
         w.mission = m; w.target = target;
         return ok("Air wing assigned: " + m + (target >= 0 ? " over " + prov(target).name : ""));
     }
+
+    /** Runs a covert operation against another nation; see {@link Ops}. */
+    public Result runOp(int a, int b, Ops.Op op) { return Ops.run(this, a, b, op); }
+
+    public Ops.Estimate opsEstimate(int a, int b, Ops.Op op) { return Ops.estimate(this, a, b, op); }
 
     public Result assignAgent(int n, int target) {
         NationState s = ns[n];

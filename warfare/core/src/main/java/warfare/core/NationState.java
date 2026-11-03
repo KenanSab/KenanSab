@@ -38,6 +38,8 @@ public final class NationState implements Serializable {
     public final List<AirWing> airWings = new ArrayList<>();
     public final Map<Integer, Double> agents = new HashMap<>();   // target nation -> intel network level 0..100
     public double lastIncome, lastOilDelta;
+    public int blackoutUntil;                                        // cyberattack: radar, satellites and air recon are dark until this day
+    public final Map<String, Integer> opCooldown = new HashMap<>();   // "target:op" -> day it can be run again
     // economy
     public Government gov = Government.REPUBLIC;
     public double[] approval = {50, 50, 50, 50};

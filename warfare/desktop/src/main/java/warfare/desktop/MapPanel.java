@@ -24,7 +24,8 @@ import java.util.Map;
  */
 final class MapPanel extends JPanel {
     enum Mode {
-        POLITICAL("Political"), TERRAIN("Terrain"), INTEL("Intel / Vision"), DIPLOMATIC("Diplomatic");
+        POLITICAL("Political"), TERRAIN("Terrain"), INTEL("Intel / Vision"), DIPLOMATIC("Diplomatic"),
+        POPULATION("Population"), ECONOMY("Economy"), UNREST("Unrest"), RESOURCES("Resources");
         final String label;
         Mode(String l) { label = l; }
     }
@@ -151,22 +152,35 @@ final class MapPanel extends JPanel {
         for (Toast t : toasts) {
             double life = (t.until - now) / 5200.0;
             float a = (float) Math.max(0, Math.min(1, Math.min(life * 6, (1 - life) * 8)));
-            int w = 360, h = 62, x = getWidth() - w - 14 - rightInset;
+            int w = 380, x = getWidth() - w - 14 - rightInset;
+            g.setFont(Fonts.ui(12f));
+            FontMetrics fm = g.getFontMetrics();
+            List<String> lines = new ArrayList<>();
+            StringBuilder cur = new StringBuilder();
+            for (String word : t.text.split(" ")) {
+                if (fm.stringWidth(cur + " " + word) > w - 76 && cur.length() > 0) { lines.add(cur.toString()); cur = new StringBuilder(); }
+                if (cur.length() > 0) cur.append(' ');
+                cur.append(word);
+            }
+            if (cur.length() > 0) lines.add(cur.toString());
+            if (lines.size() > 3) { lines = new ArrayList<>(lines.subList(0, 3)); lines.set(2, lines.get(2) + "..."); }
+            int h = 52 + Math.max(1, lines.size()) * 15;
             Composite old = g.getComposite();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, a));
             Skin.shadow(g, x, y, w, h, 8, 5, 110);
             Skin.plate(g, new RoundRectangle2D.Float(x, y, w, h, 8, 8), Skin.Kind.PANEL, 1f);
             Skin.frame(g, x + 0.5f, y + 0.5f, w - 1, h - 1, 8, true, true);
-            g.drawImage(Assets.icon(t.icon, 36, Skin.BRASS), x + 14, y + 13, null);
+            g.drawImage(Assets.icon(t.icon, 36, Skin.BRASS), x + 16, y + 14, null);
             g.setFont(Fonts.label(12.5f));
             g.setColor(Skin.BRASS);
-            g.drawString(t.header, x + 58, y + 20);
+            g.drawString(t.header, x + 62, y + 22);
             g.setFont(Fonts.title(21f));
             g.setColor(Color.WHITE);
-            g.drawString(t.title.toUpperCase(), x + 58, y + 40);
+            g.drawString(t.title.toUpperCase(), x + 62, y + 42);
             g.setFont(Fonts.ui(12f));
-            g.setColor(new Color(178, 178, 172));
-            g.drawString(t.text, x + 58, y + 55);
+            g.setColor(new Color(190, 189, 183));
+            int ty = y + 58;
+            for (String line : lines) { g.drawString(line, x + 62, ty); ty += 15; }
             g.setComposite(old);
             y += h + 8;
         }
@@ -364,6 +378,29 @@ final class MapPanel extends JPanel {
     /** Blocks until the cached layers match the current view exactly (screenshots, tests). */
     void flushLayers() { renderNow(); }
 
+    private double popScale = -1, gdpScale, oilScale;
+
+    /** 95th-percentile values so a few giant provinces do not wash out the whole heat map. */
+    private void heatScales() {
+        if (popScale >= 0) return;
+        List<Double> p = new ArrayList<>(), g2 = new ArrayList<>(), o = new ArrayList<>();
+        for (WorldData.ProvinceInfo pi : w.provinces) if (!pi.sea) { p.add(pi.pop); g2.add(pi.gdp); if (pi.oil > 0) o.add(pi.oil); }
+        java.util.Collections.sort(p); java.util.Collections.sort(g2); java.util.Collections.sort(o);
+        popScale = Math.max(1, p.get((int) (p.size() * 0.95)));
+        gdpScale = Math.max(1, g2.get((int) (g2.size() * 0.95)));
+        oilScale = o.isEmpty() ? 1 : Math.max(1e-6, o.get((int) (o.size() * 0.9)));
+    }
+
+    private static final int[][] HEAT = {{30, 32, 42}, {74, 54, 112}, {178, 66, 98}, {238, 142, 62}, {255, 228, 126}};
+
+    private static int heat(double t) {
+        t = Math.max(0, Math.min(1, t)) * (HEAT.length - 1);
+        int i = Math.min(HEAT.length - 2, (int) t);
+        double f = t - i;
+        int r = (int) (HEAT[i][0] + (HEAT[i + 1][0] - HEAT[i][0]) * f), g = (int) (HEAT[i][1] + (HEAT[i + 1][1] - HEAT[i][1]) * f), b = (int) (HEAT[i][2] + (HEAT[i + 1][2] - HEAT[i][2]) * f);
+        return (r << 16) | (g << 8) | b;
+    }
+
     private static int argb(int rgb, double alpha) { return ((int) Math.max(0, Math.min(255, alpha * 255)) << 24) | (rgb & 0xFFFFFF); }
 
     private int colorOf(int p, Intel in, int me) {
@@ -394,6 +431,22 @@ final class MapPanel extends JPanel {
                     case "NATO" -> 0x4A6FC4; case "CSTO" -> 0xC8803F; case "EASTERN" -> 0xA64A9C; case "PACIFIC" -> 0x3FAAA8; default -> 0x8C8C92;
                 };
                 return q > 0 ? argb(c, 0.72) : argb(NationColors.mix(c, 0x50545C, 0.35 + 0.35 * stale), 0.62);
+            }
+            case POPULATION, ECONOMY, RESOURCES -> {
+                heatScales();
+                if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.3 * stale);
+                int ko = in.knownOwner[p];
+                if (ko < 0) return argb(0x6C6E70, 0.8);
+                double v = mode == Mode.POPULATION ? Math.sqrt(pi.pop / popScale) : mode == Mode.ECONOMY ? Math.sqrt(pi.gdp * gs.devastation[p] / gdpScale) : pi.oil <= 0 ? 0 : 0.25 + 0.75 * Math.min(1, pi.oil / oilScale);
+                return argb(NationColors.mix(heat(v), 0x6C6E70, q > 0 || ko == me ? 0 : 0.45 * stale + 0.2), q > 0 || ko == me ? 0.92 : 0.8);
+            }
+            case UNREST -> {
+                if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.3 * stale);
+                int ko = in.knownOwner[p];
+                if (ko < 0) return argb(0x6C6E70, 0.8);
+                if (ko != me && q < 2) return argb(0x6C6E70, 0.7);        // unrest is only visible where we can see clearly
+                double u = Math.max(0, Math.min(1, gs.unrest[p] / 100.0));
+                return argb(NationColors.mix(0x3C8C5A, 0xE04632, Math.sqrt(u)), 0.9);
             }
             default -> {
                 if (pi.sea) return q > 0 ? 0 : argb(0x3A4A5C, 0.10 + 0.34 * stale);
@@ -1310,7 +1363,7 @@ final class MapPanel extends JPanel {
     private void drawControls(Graphics2D g) {
         modeRects.clear();
         Mode[] modes = Mode.values();
-        int bw = 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
+        int bw = modes.length > 5 ? 92 : 104, bh = 32, gap = 4, total = modes.length * bw + (modes.length - 1) * gap + 20;
         int x0 = (getWidth() - total) / 2, y0 = getHeight() - bh - 22;
         Skin.shadow(g, x0, y0, total, bh + 12, 12, 5, 110);
         Skin.plate(g, new RoundRectangle2D.Float(x0, y0 - 2, total, bh + 12, 12, 12), Skin.Kind.BAR, 1f);

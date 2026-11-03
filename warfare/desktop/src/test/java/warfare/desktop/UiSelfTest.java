@@ -163,7 +163,7 @@ class UiSelfTest {
             asked = ui.modals.isOpen();
         }
         assertTrue(asked, "tactic prompt appeared as a modal card");
-        answer(ui, 1);                                            // pick the second tactic card
+        SwingUtilities.invokeAndWait(() -> WarfareApp.find(ui.modals.top(), TacticHand.class).get(0).play(1));     // play the second tactic card
         Thread.sleep(200);
         assertFalse(ui.modals.isOpen(), "answering closes the card");
         assertEquals(Army.Mode.MANUAL, a.mode);

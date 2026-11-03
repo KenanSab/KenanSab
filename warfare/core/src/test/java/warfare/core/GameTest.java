@@ -728,4 +728,61 @@ class GameTest {
             assertTrue(g2.assessPeace(g2.player, b2, Peace.Term.DEMAND, big.counterDemand).accepted, "the counter-offer is one they accept");
         }
     }
+
+    @Test
+    void covertOperationsNeedAgentsAndLeaveAttributionFog() {
+        GameState gs = game("FRA");
+        int a = gs.player, b = world.nationByTag.get("RUS");
+        assertFalse(Ops.estimate(gs, a, b, Ops.Op.SABOTAGE).available(), "no network, no sabotage");
+        assertFalse(Ops.estimate(gs, a, b, Ops.Op.CYBER).available() && gs.ns[a].tech[2] < 1, "cyber needs intelligence research");
+        gs.ns[a].money = 100000;
+        for (int k = 0; k < 4; k++) assertTrue(gs.assignAgent(a, b).ok);
+        Ops.Estimate e = Ops.estimate(gs, a, b, Ops.Op.DISINFO);
+        assertTrue(e.available(), e.why());
+        assertTrue(e.success() >= 0.12 && e.success() <= 0.9);
+        int ok = 0, caught = 0, traced = 0, unknown = 0;
+        for (int i = 0; i < 80; i++) {
+            gs.ns[a].opCooldown.clear();
+            gs.ns[a].agents.put(b, 40.0);
+            gs.day++;
+            double before = gs.ns[b].stability;
+            GameState.Result r = gs.runOp(a, b, Ops.Op.DISINFO);
+            if (!r.ok) { caught++; continue; }
+            ok++;
+            if (r.message.contains("traced")) traced++; else unknown++;
+            assertTrue(gs.ns[b].stability <= before, "disinformation hurts stability");
+        }
+        assertTrue(ok > 10 && caught > 3, "operations sometimes work and sometimes fail: " + ok + "/" + caught);
+        assertTrue(traced > 0 && unknown > 0, "attribution is uncertain: traced " + traced + ", unknown " + unknown);
+        // cyberattack blinds the victim for a while
+        gs.ns[a].tech[2] = 2;
+        gs.ns[a].opCooldown.clear();
+        GameState.Result cyber = null;
+        for (int i = 0; i < 40 && (cyber == null || !cyber.ok); i++) { gs.ns[a].opCooldown.clear(); gs.ns[a].money = 1000; gs.day++; cyber = gs.runOp(a, b, Ops.Op.CYBER); }
+        assertTrue(cyber.ok, "a cyberattack lands eventually");
+        assertTrue(gs.ns[b].blackoutUntil > gs.day, "the victim is dark");
+        Vision.updateAll(gs);
+        // sabotage and insurgents change the target
+        int caps = world.nations.get(b).capital;
+        gs.factory[caps] = 3;
+        for (int i = 0; i < 40; i++) { gs.ns[a].opCooldown.clear(); gs.ns[a].money = 1000; gs.ns[a].agents.put(b, 60.0); gs.day++; if (gs.runOp(a, b, Ops.Op.SABOTAGE).ok) break; }
+        assertTrue(gs.factory[caps] < 3, "sabotage destroyed a factory");
+    }
+
+    @Test
+    void scenariosStartWithWars() {
+        GameState quiet = new GameState(world, world.nationByTag.get("FRA"), 1, Scenario.QUIET);
+        int none = 0;
+        for (int x = 0; x < quiet.N; x++) for (int y = x + 1; y < quiet.N; y++) if (quiet.war[x][y]) none++;
+        assertEquals(0, none);
+        GameState hot = new GameState(world, world.nationByTag.get("FRA"), 1, Scenario.FLASHPOINTS);
+        int rus = world.nationByTag.get("RUS"), ukr = world.nationByTag.get("UKR");
+        assertTrue(hot.war[rus][ukr], "Russia-Ukraine is on from day one");
+        assertFalse(hot.assessPeace(rus, ukr, Peace.Term.WHITE).message.contains("barely begun"), "the wars are old enough to talk about peace");
+        GameState fire = new GameState(world, world.nationByTag.get("FRA"), 1, Scenario.WORLD_ON_FIRE);
+        int wars = 0;
+        for (int x = 0; x < fire.N; x++) for (int y = x + 1; y < fire.N; y++) if (fire.war[x][y]) wars++;
+        assertTrue(wars >= 9, "wars in World on fire: " + wars);
+        for (int d = 0; d < 120; d++) { fire.pauseRequested = false; fire.pendingEvents.clear(); fire.awaitingTactic.clear(); fire.advanceDay(); }
+    }
 }

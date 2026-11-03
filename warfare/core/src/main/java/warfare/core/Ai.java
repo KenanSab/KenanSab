@@ -15,7 +15,25 @@ public final class Ai {
         if (gs.day % 12 == n % 12 && !war) considerWar(gs, n);
         if (gs.day % 45 == n % 45) considerAlliance(gs, n);
         if (war) { manageArmies(gs, n); considerPeace(gs, n); }
+        if (gs.day % 20 == n % 20) considerOps(gs, n, war);
         economy(gs, n, war);
+    }
+
+    /** Shadow war: AIs plant agents in rivals and enemies, then strike with cyber, sabotage, insurgents or disinformation. */
+    static void considerOps(GameState gs, int n, boolean war) {
+        NationState s = gs.ns[n];
+        if (s.money < 120 || gs.rng.nextDouble() > (war ? 0.55 : 0.12)) return;
+        int target = -1; double worst = war ? 100 : -45;
+        for (int m = 0; m < gs.N; m++) {
+            if (m == n || !gs.ns[m].alive || gs.isAlly(n, m)) continue;
+            double bad = war && gs.war[n][m] ? 100 : -gs.opinion[n][m];
+            if (bad > worst) { worst = bad; target = m; }
+        }
+        if (target < 0) return;
+        if (s.agents.getOrDefault(target, 0.0) < 10) { gs.assignAgent(n, target); return; }
+        Ops.Op[] pool = war ? new Ops.Op[]{Ops.Op.CYBER, Ops.Op.SABOTAGE, Ops.Op.INSURGENTS, Ops.Op.DISINFO} : new Ops.Op[]{Ops.Op.DISINFO, Ops.Op.CYBER, Ops.Op.STEAL};
+        Ops.Op op = pool[gs.rng.nextInt(pool.length)];
+        if (Ops.estimate(gs, n, target, op).available()) gs.runOp(n, target, op);
     }
 
     /** AI nations pair up only with partners they genuinely like: high opinion plus an acceptable verdict. */

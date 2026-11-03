@@ -34,11 +34,12 @@ public final class Vision {
         byte[] q = in.base;
         Arrays.fill(q, (byte) 0);
         NationState s = gs.ns[n];
+        boolean dark = s.blackoutUntil > gs.day;            // cyberattacked: no radar, satellites or air recon
         for (int p = 0; p < gs.P; p++) {
             if (gs.owner[p] == n) {
                 raise(q, p, 2);
                 for (int nb : gs.world.provinces.get(p).neighbours) raise(q, nb, 1);
-                if (gs.radar[p] > 0) spread(gs, p, new int[]{2, 1, 1, 1}, q);
+                if (gs.radar[p] > 0 && !dark) spread(gs, p, new int[]{2, 1, 1, 1}, q);
             }
         }
         int extra = s.tech[2] >= 1 ? 1 : 0;
@@ -51,10 +52,10 @@ public final class Vision {
             spread(gs, a.province, lv, q);
         }
         for (AirWing w : s.airWings) {
-            if (w.mission != Mission.RECON || w.target < 0) continue;
+            if (dark || w.mission != Mission.RECON || w.target < 0) continue;
             spread(gs, w.target, new int[]{3, 3, 2}, q);
         }
-        if (s.tech[2] >= 2) { // satellites sweep a moving swath of the globe
+        if (s.tech[2] >= 2 && !dark) { // satellites sweep a moving swath of the globe
             int width = 220 + 70 * s.tech[2];
             int start = (gs.day * 61 + n * 37) % gs.world.width;
             for (int p = 0; p < gs.P; p++) {
