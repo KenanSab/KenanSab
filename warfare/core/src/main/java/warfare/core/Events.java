@@ -7,11 +7,24 @@ public final class Events {
     private Events() {}
 
     static void post(GameState gs, GameEvent ev) {
+        ev.day = gs.day;
         if (ev.nation == gs.player) { gs.pendingEvents.add(ev); gs.pauseRequested = true; }
         else apply(gs, ev, gs.rng.nextInt(ev.options.size()));
     }
 
+    /** What happens if a decision is left alone: the cautious option for most, accepting the vote, crushing a revolt, refusing peace. */
+    static int defaultOption(GameEvent ev) {
+        if (ev.id.startsWith("peace:")) return 1;
+        return switch (ev.id) { case "election", "revolt" -> 0; default -> ev.options.size() - 1; };
+    }
+
     static void daily(GameState gs) {
+        for (GameEvent ev : new java.util.ArrayList<>(gs.pendingEvents)) {
+            if (gs.day - ev.day <= 45) continue;
+            gs.pendingEvents.remove(ev);
+            apply(gs, ev, defaultOption(ev));
+            gs.news("No decision was made on \"" + ev.title + "\": it resolved itself.");
+        }
         for (int n = 0; n < gs.N; n++) {
             NationState s = gs.ns[n];
             if (!s.alive) continue;
@@ -51,7 +64,7 @@ public final class Events {
             case "peace" -> {
                 int other = Integer.parseInt(ev.id.substring(6));
                 if (opt == 0 && gs.war[ev.nation][other]) { gs.makePeace(ev.nation, other); msg = "Peace signed."; }
-                else { gs.peaceCooldown[ev.nation][other] = gs.peaceCooldown[other][ev.nation] = gs.day + 150; msg = "Offer refused. They will not ask again for a while."; }
+                else { gs.offerCooldown[other][ev.nation] = gs.day + 150; msg = "Offer refused. They will not ask again for a while."; }
             }
             case "election" -> {
                 if (opt == 0) { s.stability -= 3; s.budget = new Budget(); msg = "The new government takes office with its own priorities."; }

@@ -234,7 +234,7 @@ final class CountryMenu {
         grid.setOpaque(false);
         grid.setAlignmentX(Component.LEFT_ALIGNMENT);
         grid.add(act("Declare war", "battle", () -> gs.declareWar(me, nation)));
-        grid.add(act("Offer peace", "general", () -> gs.offerPeace(me, nation)));
+        grid.add(act("Offer peace", "general", () -> { PeaceCards.open(GameUi.current, nation); return null; }));
         grid.add(act("Propose alliance", "tab_diplo", () -> gs.formAlliance(me, nation)));
         grid.add(act("Dissolve alliance", "split", () -> gs.breakAlliance(me, nation)));
         grid.add(act("Toggle sanctions", "wall", () -> gs.toggleSanction(me, nation)));

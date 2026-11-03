@@ -89,6 +89,10 @@ final class GameMenu {
         col.add(Wf.toggle("Autosave every 30 days", Settings.autosave, on -> Settings.autosave = on));
         col.add(Ui.gap(0, 6));
         col.add(Wf.toggle("Show tutorial hints on new games", Settings.tutorial, on -> Settings.tutorial = on));
+        col.add(Ui.gap(0, 6));
+        col.add(Wf.toggle("Pause when a decision arrives", Settings.pauseOnEvents, on -> Settings.pauseOnEvents = on));
+        col.add(Ui.gap(0, 6));
+        col.add(Wf.toggle("Pause to pick tactics in manual battles", Settings.pauseOnTactics, on -> Settings.pauseOnTactics = on));
         col.add(Ui.gap(0, 16));
         col.add(Wf.primary("Done", null, () -> { Settings.save(); ui.modals.pop(); }));
         return Modals.card("Settings", "stability", col, 480, 0, () -> { Settings.save(); ui.modals.pop(); });

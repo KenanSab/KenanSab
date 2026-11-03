@@ -26,13 +26,17 @@ final class Hud {
             oil = new Chip("oil", new Color(200, 160, 120), "Oil stock (armor, mechanized units and aircraft burn it)"),
             stab = new Chip("stability", Ui.GREEN, "Stability. Low stability brings coups, unrest and weak morale"),
             appr = new Chip("general", Ui.GOLD, "Government approval (click for the government screen)"),
-            nuke = new Chip("nuke", Ui.RED, "Nuclear warheads");
+            nuke = new Chip("nuke", Ui.RED, "Nuclear warheads"),
+            decide = new Chip("tab_reports", Ui.GOLD, "Decisions are waiting - click to answer them");
 
-    Hud(GameState gs, Runnable togglePause, IntConsumer setSpeed, Runnable openMenu, Runnable openCountry) {
+    Hud(GameState gs, Runnable togglePause, IntConsumer setSpeed, Runnable openMenu, Runnable openCountry, Runnable openDecisions) {
         this.gs = gs;
         badge = new Badge(gs, openCountry);
         plates.setOpaque(false);
-        for (Chip c : new Chip[]{money, men, ind, oil, stab, appr, nuke}) plates.add(c);
+        for (Chip c : new Chip[]{money, men, ind, oil, stab, appr, nuke, decide}) plates.add(c);
+        decide.setVisible(false);
+        decide.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        decide.addMouseListener(new MouseAdapter() { @Override public void mouseClicked(MouseEvent e) { openDecisions.run(); } });
         appr.addMouseListener(new MouseAdapter() { @Override public void mouseClicked(MouseEvent e) { openCountry.run(); } });
         speed = new SpeedControl(togglePause, setSpeed);
         time.setOpaque(false);
@@ -53,6 +57,9 @@ final class Hud {
         appr.set((int) ov + "%", null, null);
         nuke.setVisible(s.nukes > 0);
         nuke.set(String.valueOf(s.nukes), null, null);
+        int waiting = gs.pendingEvents.size();
+        decide.setVisible(waiting > 0);
+        if (waiting > 0) decide.set(String.valueOf(waiting), "decide", Ui.AMBER);
         plates.revalidate();
     }
 

@@ -251,7 +251,11 @@ public final class WarfareApp {
                 for (JScrollPane sp : find(ui.windows.get(ui.openWindow), JScrollPane.class)) { layoutAll(sp); sp.getVerticalScrollBar().setValue(sp.getVerticalScrollBar().getMaximum()); }
             String modal = o.get("modal");
             if (modal != null) {
-                if (modal.startsWith("country:")) {
+                if (modal.startsWith("peace")) {
+                    gs.warStart[me][world.nationByTag.get(foeTag)] = gs.warStart[world.nationByTag.get(foeTag)][me] = gs.day - 90;
+                    PeaceCards.open(ui, world.nationByTag.get(foeTag));
+                    if (modal.equals("peace:refuse")) { layoutAll(ui); ui.modals.top(); PeaceCards.propose(ui, world.nationByTag.get(foeTag), warfare.core.Peace.Term.WHITE); }
+                } else if (modal.startsWith("country:")) {
                     String[] parts = modal.split(":");
                     CountryMenu cm = new CountryMenu(gs, world.nationByTag.get(parts[1]), () -> {}, () -> {});
                     ui.modals.push(cm.card(() -> {}));

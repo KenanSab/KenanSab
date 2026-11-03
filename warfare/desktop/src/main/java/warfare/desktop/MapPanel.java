@@ -760,35 +760,45 @@ final class MapPanel extends JPanel {
         }
     }
 
-    /** Movement order: a glowing route with flowing chevrons and an arrow head, like a strategic-map advance arrow. */
+    /** Every march order of ours is shown; the selected army's route is the bright one. */
     private void drawPath(Graphics2D g) {
-        Army a = gs.armies.get(selArmy);
-        if (a == null || a.owner != gs.player || a.path.isEmpty()) return;
+        Army sel = gs.armies.get(selArmy);
+        for (Army a : gs.armies.values()) if (a.owner == gs.player && !a.path.isEmpty() && a != sel) drawRoute(g, a, false);
+        if (sel != null && sel.owner == gs.player && !sel.path.isEmpty()) drawRoute(g, sel, true);
+    }
+
+    /** Movement order: a glowing route with flowing chevrons and an arrow head, like a strategic-map advance arrow. */
+    private void drawRoute(Graphics2D g, Army a, boolean selected) {
         Point2D.Double start = screen(a.province);
         Path2D.Double route = new Path2D.Double();
         route.moveTo(start.x, start.y);
         Point2D.Double prev = start, last = start;
         List<Point2D.Double> nodes = new ArrayList<>();
         for (int p : a.path) { Point2D.Double s = screen(p); route.lineTo(s.x, s.y); nodes.add(s); prev = last; last = s; }
+        Rectangle bounds = route.getBounds();
+        bounds.grow(30, 30);
+        if (!bounds.intersects(0, 0, getWidth(), getHeight())) return;
+        float k = selected ? 1f : 0.62f;
+        int alpha = selected ? 235 : 175;
         Stroke old = g.getStroke();
-        g.setStroke(new BasicStroke(9f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(0, 0, 0, 90));
+        g.setStroke(new BasicStroke(9f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(0, 0, 0, selected ? 90 : 70));
         g.draw(route);
-        g.setStroke(new BasicStroke(5.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(214, 150, 40, 235));
+        g.setStroke(new BasicStroke(5.2f * k, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(selected ? new Color(214, 150, 40, alpha) : new Color(196, 160, 90, alpha));
         g.draw(route);
-        g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 1f, new float[]{9, 15}, (float) (24 - (System.currentTimeMillis() % 1200) / 1200.0 * 24)));
-        g.setColor(new Color(255, 244, 190, 240));
+        g.setStroke(new BasicStroke(2.2f * k, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 1f, new float[]{9, 15}, (float) (24 - (System.currentTimeMillis() % 1200) / 1200.0 * 24)));
+        g.setColor(new Color(255, 244, 190, selected ? 240 : 190));
         g.draw(route);
-        for (Point2D.Double n : nodes) { g.setColor(new Color(255, 232, 150)); g.fill(new Ellipse2D.Double(n.x - 3, n.y - 3, 6, 6)); }
+        if (selected) for (Point2D.Double n : nodes) { g.setColor(new Color(255, 232, 150)); g.fill(new Ellipse2D.Double(n.x - 3, n.y - 3, 6, 6)); }
         // arrow head on the last leg
         double ang = Math.atan2(last.y - prev.y, last.x - prev.x);
         AffineTransform at = g.getTransform();
-        g.translate(last.x, last.y); g.rotate(ang);
+        g.translate(last.x, last.y); g.rotate(ang); g.scale(k * 0.85 + 0.15, k * 0.85 + 0.15);
         Path2D.Double head = new Path2D.Double();
         head.moveTo(15, 0); head.lineTo(-6, -11); head.lineTo(-1, 0); head.lineTo(-6, 11); head.closePath();
         g.setColor(new Color(0, 0, 0, 110)); g.translate(1.5, 2); g.fill(head); g.translate(-1.5, -2);
-        g.setColor(new Color(255, 218, 96)); g.fill(head);
+        g.setColor(selected ? new Color(255, 218, 96) : new Color(236, 214, 150)); g.fill(head);
         g.setStroke(new BasicStroke(1.4f)); g.setColor(new Color(120, 70, 10)); g.draw(head);
         g.setTransform(at);
         g.setStroke(old);

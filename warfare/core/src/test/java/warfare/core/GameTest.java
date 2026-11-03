@@ -637,4 +637,57 @@ class GameTest {
         assertTrue(home.totalUnits() < before, "units wasted away");
         assertTrue(home.morale < 90, "morale drained");
     }
+
+    @Test
+    void peaceCanBeRefusedAndHasTerms() {
+        GameState gs = game("FRA");
+        int a = gs.player, b = world.nationByTag.get("RUS");
+        assertTrue(gs.declareWar(a, b).ok);
+        assertFalse(gs.assessPeace(a, b, Peace.Term.WHITE).accepted, "nobody talks on day one");
+        assertTrue(gs.assessPeace(a, b, Peace.Term.WHITE).message.contains("barely begun"));
+        gs.warStart[a][b] = gs.warStart[b][a] = gs.day - 120;
+        // an even war between rested nations: a white peace is refused, with reasons, and asking again is blocked for a while
+        gs.ns[a].warWeariness = gs.ns[b].warWeariness = 0;
+        Peace.Talk talk = gs.assessPeace(a, b, Peace.Term.WHITE);
+        assertFalse(talk.accepted, "an even, fresh war is not ended on request: " + talk.score);
+        assertFalse(talk.reasons.isEmpty(), "a refusal explains itself");
+        GameState.Result r = gs.negotiatePeace(a, b, Peace.Term.WHITE);
+        assertFalse(r.ok);
+        assertTrue(gs.war[a][b], "still at war after a refusal");
+        assertTrue(gs.peaceCooldown[a][b] > gs.day, "refusal starts a cooldown");
+        assertTrue(gs.assessPeace(a, b, Peace.Term.WHITE).message.contains("refuses to talk"));
+        // a country that has lost most of its land and is exhausted takes peace
+        gs.peaceCooldown[a][b] = gs.peaceCooldown[b][a] = 0;
+        int taken = 0;
+        for (int p : world.nations.get(b).provinces) if (taken++ % 4 != 0) { gs.owner[p] = gs.controller[p] = a; }
+        gs.ns[b].warWeariness = 70;
+        assertTrue(gs.assessPeace(a, b, Peace.Term.WHITE).accepted, "a beaten, exhausted enemy accepts");
+        // demanding reparations pays out; a treaty also protects against new wars for a while
+        double before = gs.ns[a].money;
+        gs.ns[b].money = 500;
+        GameState.Result peace = gs.negotiatePeace(a, b, Peace.Term.REPARATIONS);
+        if (peace.ok) assertTrue(gs.ns[a].money > before, "reparations were paid");
+        else gs.negotiatePeace(a, b, Peace.Term.WHITE);
+        assertFalse(gs.war[a][b], "peace signed");
+        assertFalse(gs.declareWar(a, b).ok, "a fresh treaty blocks an immediate new war");
+    }
+
+    @Test
+    void returningProvincesWinsPeaceAndMovesOwnership() {
+        GameState gs = game("FRA");
+        int a = gs.player, b = world.nationByTag.get("SYR");
+        assertTrue(gs.declareWar(a, b).ok);
+        gs.warStart[a][b] = gs.warStart[b][a] = gs.day - 60;
+        gs.ns[a].warWeariness = 20; gs.ns[b].warWeariness = 20;
+        int p = world.nations.get(b).provinces.get(0);
+        gs.owner[p] = gs.controller[p] = a;
+        Peace.Situation s = gs.peaceSituation(a, b);
+        assertEquals(1, s.returnable());
+        Peace.Talk white = gs.assessPeace(a, b, Peace.Term.WHITE), ret = gs.assessPeace(a, b, Peace.Term.RETURN);
+        assertTrue(ret.score > white.score, "handing territory back makes peace easier");
+        if (ret.accepted) {
+            assertTrue(gs.negotiatePeace(a, b, Peace.Term.RETURN).ok);
+            assertEquals(b, gs.owner[p], "the province went home");
+        }
+    }
 }

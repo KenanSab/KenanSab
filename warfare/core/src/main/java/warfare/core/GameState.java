@@ -28,7 +28,7 @@ public final class GameState implements Serializable {
     public final NationState[] ns;
     public final boolean[][] war, ally, secret, sanction;
     public final float[][] opinion;
-    public final int[][] peaceCooldown, allianceCooldown;
+    public final int[][] peaceCooldown, allianceCooldown, warStart, truceUntil, offerCooldown;
     public int lastPeaceOfferDay = -1000;
     public final List<Deal> deals = new ArrayList<>();
     public final Map<Integer, Army> armies = new LinkedHashMap<>();
@@ -57,7 +57,7 @@ public final class GameState implements Serializable {
         unrest = new float[P]; occupy = new float[P]; devastation = new float[P];
         ns = new NationState[N];
         war = new boolean[N][N]; ally = new boolean[N][N]; secret = new boolean[N][N]; sanction = new boolean[N][N];
-        opinion = new float[N][N]; peaceCooldown = new int[N][N]; allianceCooldown = new int[N][N];
+        opinion = new float[N][N]; peaceCooldown = new int[N][N]; allianceCooldown = new int[N][N]; warStart = new int[N][N]; truceUntil = new int[N][N]; offerCooldown = new int[N][N];
         intel = new Intel[N];
         for (int p = 0; p < P; p++) {
             owner[p] = controller[p] = w.provinces.get(p).sea ? -2 : w.provinces.get(p).nation;
@@ -452,7 +452,9 @@ public final class GameState implements Serializable {
         if (a == b || !ns[b].alive) return no("Invalid target.");
         if (war[a][b]) return no("Already at war.");
         if (isAlly(a, b)) return no("They are your ally.");
+        if (day < truceUntil[a][b]) return no("A recent peace treaty still holds for " + (truceUntil[a][b] - day) + " more days.");
         war[a][b] = war[b][a] = true;
+        warStart[a][b] = warStart[b][a] = day;
         ns[a].lastWarDay = ns[b].lastWarDay = day;
         ns[a].stability = Math.max(0, ns[a].stability - 3);
         news("WAR: " + nationName(a) + " declares war on " + nationName(b) + "!");
@@ -471,28 +473,26 @@ public final class GameState implements Serializable {
 
     void joinWar(int c, int enemy, String why) {
         war[c][enemy] = war[enemy][c] = true;
+        warStart[c][enemy] = warStart[enemy][c] = day;
         ns[c].lastWarDay = ns[enemy].lastWarDay = day;
         news(nationName(c) + " joins the war against " + nationName(enemy) + " in " + why + ".");
     }
 
-    /** Peace is negotiated: the AI accepts when it is losing, exhausted or the war has dragged on. */
-    public Result offerPeace(int a, int b) {
-        if (!war[a][b]) return no("Not at war.");
-        boolean accept = a == b;
-        if (b != player || a == player) {
-            double hpA = Math.max(1, nationHp(a)), hpB = Math.max(1, nationHp(b));
-            double ratio = hpA / hpB;
-            double lostB = 1 - ownedProvinces(b) / (double) Math.max(1, world.nations.get(b).provinces.size());
-            accept = ratio > 1.5 || ns[b].warWeariness > 60 || lostB > 0.15 || ns[b].stability < 30 || (day - ns[b].lastWarDay > 150 && rng.nextDouble() < 0.5);
-            if (ratio < 0.8 && lostB < 0.05) accept = false;
-        } else accept = true;
-        if (!accept) { peaceCooldown[a][b] = peaceCooldown[b][a] = Math.max(peaceCooldown[a][b], day + 40); return no(nationName(b) + " refuses to negotiate."); }
-        makePeace(a, b);
-        return ok("Peace with " + nationName(b) + ".");
-    }
+    /** How {@code b} would answer {@code a}'s proposal, without doing anything. */
+    public Peace.Talk assessPeace(int a, int b, Peace.Term term) { return Peace.assess(this, a, b, term); }
+
+    /** What the war looks like to {@code a}: land held, armies, exhaustion. */
+    public Peace.Situation peaceSituation(int a, int b) { return Peace.situation(this, a, b); }
+
+    /** Proposes peace on the given terms; the other side may refuse. */
+    public Result negotiatePeace(int a, int b, Peace.Term term) { return Peace.negotiate(this, a, b, term); }
+
+    /** A plain white-peace proposal (used by the AI). */
+    public Result offerPeace(int a, int b) { return negotiatePeace(a, b, Peace.Term.WHITE); }
 
     public void makePeace(int a, int b) {
         war[a][b] = war[b][a] = false;
+        truceUntil[a][b] = truceUntil[b][a] = day + Peace.TRUCE_DAYS;
         news("PEACE: " + nationName(a) + " and " + nationName(b) + " end their war.");
         for (Army x : new ArrayList<>(armies.values())) {
             if ((x.owner == a && owner[x.province] == b) || (x.owner == b && owner[x.province] == a)) {

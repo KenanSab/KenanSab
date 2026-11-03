@@ -169,16 +169,46 @@ class UiSelfTest {
         assertEquals(Army.Mode.MANUAL, a.mode);
         assertEquals(Tactic.values()[1], a.tactic, "the chosen card was applied");
 
-        // events are answered through cards too
+        // decisions no longer stop time: they are announced and wait behind the bell until asked for
+        assertFalse(Settings.pauseOnEvents, "decisions do not pause by default");
+        final boolean wasPaused = ui.paused;
         gs.pendingEvents.add(new GameEvent("border", gs.player, "Border incident", "Test event.", List.of("Protest", "Mobilise", "Ignore")));
         gs.pauseRequested = true;
         SwingUtilities.invokeAndWait(ui::handlePauses);
         Thread.sleep(300);
-        assertTrue(ui.modals.isOpen(), "event card shown");
+        assertFalse(ui.modals.isOpen(), "a decision does not open a card by itself");
+        assertFalse(gs.pauseRequested, "the simulation is never left stalled");
+        assertEquals(wasPaused, ui.paused, "a decision does not touch the clock");
+        assertEquals(1, gs.pendingEvents.size(), "the decision waits");
+        SwingUtilities.invokeAndWait(() -> ui.showNextPrompt(true));          // what the bell in the top bar does
+        assertTrue(ui.modals.isOpen(), "event card shown on request");
         answer(ui, 0);
         Thread.sleep(200);
         assertTrue(gs.pendingEvents.isEmpty(), "event answered");
         assertFalse(ui.modals.isOpen());
+        assertEquals(wasPaused, ui.paused, "answering a card leaves the clock as it was");
+
+        // with the old behaviour switched on, the card comes up by itself
+        Settings.pauseOnEvents = true;
+        gs.pendingEvents.add(new GameEvent("border", gs.player, "Border incident 2", "Test event.", List.of("Protest", "Mobilise", "Ignore")));
+        SwingUtilities.invokeAndWait(ui::handlePauses);
+        Thread.sleep(300);
+        assertTrue(ui.modals.isOpen(), "event card shown by itself when asked to pause");
+        answer(ui, 2);
+        Thread.sleep(200);
+        Settings.pauseOnEvents = false;
+        assertEquals(wasPaused, ui.paused);
+
+        // peace talks: the other side can refuse, and says why
+        int enemy = world.nationByTag.get("UKR");
+        gs.war[gs.player][enemy] = gs.war[enemy][gs.player] = true;
+        gs.warStart[gs.player][enemy] = gs.warStart[enemy][gs.player] = gs.day - 100;
+        SwingUtilities.invokeAndWait(() -> PeaceCards.open(ui, enemy));
+        assertTrue(ui.modals.isOpen(), "peace talks card opens");
+        answer(ui, 0);                                                         // white peace
+        Thread.sleep(200);
+        assertTrue(ui.modals.isOpen(), "the answer is shown on a card");
+        SwingUtilities.invokeAndWait(() -> ui.modals.clear());
 
         // menu, settings, achievements, controls, save slots all open and close as cards
         SwingUtilities.invokeAndWait(() -> GameMenu.open(ui));

@@ -59,7 +59,7 @@ final class GameUi extends JPanel {
         map.onSelect = this::refresh;
         map.onOrder = this::refresh;
 
-        hud = new Hud(gs, () -> setPaused(!paused), this::setSpeed, () -> GameMenu.open(this), () -> openCountry(gs.player));
+        hud = new Hud(gs, () -> setPaused(!paused), this::setSpeed, () -> GameMenu.open(this), () -> openCountry(gs.player), () -> showNextPrompt(true));
         rail = new Rail(this::pick);
         selectionCard = new Wf.Window("Selection", "tab_select", this::clearSelection);
         selectionCard.body.add(selection, BorderLayout.CENTER);
@@ -334,20 +334,22 @@ final class GameUi extends JPanel {
             if (s.contains("NUCLEAR STRIKE") || s.contains("launches a nuclear")) Audio.get().play(Synth.Sfx.NUKE);
             else if (s.contains("WAR:") && s.contains(me3)) {
                 Audio.get().play(Synth.Sfx.WAR_HORN);
-                if (s.contains("on " + me3 + "!")) { map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle", "ALERT"); gs.pauseRequested = true; }
+                if (s.contains("on " + me3 + "!")) map.toast("War declared on you", s.substring(s.indexOf("WAR:") + 5), "battle", "ALERT");
             }
             else if (s.contains("captures") && s.contains(me3)) Audio.get().play(Synth.Sfx.CAPTURE);
             else if (s.contains("Battle begins")) Audio.get().play(Synth.Sfx.BATTLE);
             else if (s.contains("ALERT")) Audio.get().play(Synth.Sfx.ALERT);
         }
         seenNews = gs.news.size();
-        if (!gs.pendingEvents.isEmpty()) Audio.get().play(Synth.Sfx.CHIME);
     }
 
     // ------------------------------------------------------------------ decisions as in-game cards
-    void choose(String title, String icon, String text, List<String> options, IntConsumer pick) {
+    void choose(String title, String icon, String text, List<String> options, IntConsumer pick) { choose(title, icon, text, options, pick, null); }
+
+    /** A decision card. With {@code onDismiss} it has a close button: the choice is postponed and the card will not pop up again by itself. */
+    void choose(String title, String icon, String text, List<String> options, IntConsumer pick, Runnable onDismiss) {
         JComponent buttons = Modals.buttonColumn(options, i -> { modals.pop(); pick.accept(i); }, 0);
-        modals.push(Modals.card(title, icon, Modals.textBody(text, buttons), 500, 0, null));
+        modals.push(Modals.card(title, icon, Modals.textBody(text, buttons), 500, 0, onDismiss == null ? null : () -> { modals.pop(); onDismiss.run(); }));
     }
 
     void confirmCard(String title, String text, String yes, boolean danger, Runnable onYes) {
@@ -360,29 +362,51 @@ final class GameUi extends JPanel {
         modals.push(Modals.card(title, danger ? "nuke" : "general", Modals.textBody(text, row), 480, 0, () -> modals.pop()));
     }
 
+    private final java.util.Set<Object> announced = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private final java.util.Set<Object> dismissed = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    /**
+     * Called after every simulated day. New decisions are announced with a toast and the bell in the top bar;
+     * time only stops for them when the player has asked for that. Tactic cards in manual battles still ask by default.
+     * A card on screen halts time by itself, and closing it resumes at the same speed.
+     */
     void handlePauses() {
-        if (!gs.pauseRequested && gs.pendingEvents.isEmpty() && gs.awaitingTactic.isEmpty()) return;
-        gs.pauseRequested = false;
-        setPaused(true);
-        SwingUtilities.invokeLater(this::showNextPrompt);
+        gs.pauseRequested = false;                          // the simulation never stays stalled on a flag
+        announced.retainAll(gs.pendingEvents);
+        dismissed.retainAll(gs.pendingEvents);
+        for (GameEvent ev : gs.pendingEvents) if (announced.add(ev)) {
+            map.toast(ev.title, "A decision is waiting - click the bell in the top bar.", "tab_reports", "DECISION");
+            Audio.get().play(Synth.Sfx.CHIME);
+        }
+        boolean tactics = Settings.pauseOnTactics && !gs.awaitingTactic.isEmpty();
+        boolean events = Settings.pauseOnEvents && !gs.pendingEvents.isEmpty();
+        if (tactics || events) SwingUtilities.invokeLater(() -> showNextPrompt(false));
     }
 
-    /** Shows the next pending tactic choice or event, one at a time. */
-    void showNextPrompt() {
+    /** Shows the next pending tactic choice or decision, one at a time. {@code manual}: the player asked, so dismissed ones show again. */
+    void showNextPrompt(boolean manual) {
         if (modals.isOpen()) return;
-        for (Integer id : new ArrayList<>(gs.awaitingTactic)) {
-            Army a = gs.armies.get(id);
-            if (a == null || a.battleId < 0) { gs.awaitingTactic.remove(id); continue; }
-            askTactic(a);
-            return;
+        if (Settings.pauseOnTactics || manual) {
+            for (Integer id : new ArrayList<>(gs.awaitingTactic)) {
+                Army a = gs.armies.get(id);
+                if (a == null || a.battleId < 0) { gs.awaitingTactic.remove(id); continue; }
+                if (!manual && dismissed.contains(a)) continue;
+                askTactic(a, manual);
+                return;
+            }
         }
-        if (!gs.pendingEvents.isEmpty()) {
-            GameEvent ev = gs.pendingEvents.get(0);
-            choose(ev.title, "general", ev.text, ev.options, i -> { gs.answerEvent(ev, i); map.refreshColors(); refresh(); showNextPrompt(); });
+        if (Settings.pauseOnEvents || manual) {
+            for (GameEvent ev : gs.pendingEvents) {
+                if (!manual && dismissed.contains(ev)) continue;
+                choose(ev.title, "general", ev.text, ev.options, i -> { gs.answerEvent(ev, i); map.refreshColors(); refresh(); showNextPrompt(manual); }, () -> dismissed.add(ev));
+                return;
+            }
         }
     }
 
-    void askTactic(Army a) {
+    void showNextPrompt() { showNextPrompt(false); }
+
+    void askTactic(Army a, boolean manual) {
         Combat.Battle b = gs.battles.get(a.battleId);
         Army enemy = b == null ? null : gs.armies.get(b.attacker == a.id ? b.defender : b.attacker);
         StringBuilder sb = new StringBuilder("Battle at " + gs.prov(a.province).name + " (" + gs.prov(a.province).terrain + ").\n");
@@ -399,8 +423,8 @@ final class GameUi extends JPanel {
         opts.add("General decides (auto)");
         choose("Choose tactic", "battle", sb.toString(), opts, i -> {
             if (i < Tactic.values().length) gs.setTactic(a, Tactic.values()[i]); else gs.setGeneralMode(a);
-            refresh(); showNextPrompt();
-        });
+            refresh(); showNextPrompt(manual);
+        }, () -> dismissed.add(a));
     }
 
     static double sum(double[] a) { double s = 0; for (double v : a) s += v; return s; }

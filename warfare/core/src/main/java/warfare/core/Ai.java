@@ -111,18 +111,18 @@ public final class Ai {
             double mine = Math.max(1, gs.nationHp(n)), theirs = Math.max(1, Vision.estimateStrength(gs, n, e));
             double lost = 1 - gs.ownedProvinces(n) / (double) Math.max(1, gs.world.nations.get(n).provinces.size());
             boolean wantPeace = mine < theirs * 0.6 || lost > 0.2 || gs.ns[n].warWeariness > 55 || gs.ns[n].stability < 30 || gs.day - gs.ns[n].lastWarDay > 160;
-            if (!wantPeace || gs.day < gs.peaceCooldown[n][e]) continue;
+            if (!wantPeace || gs.day < (e == gs.player ? gs.offerCooldown[n][e] : gs.peaceCooldown[n][e])) continue;
             if (e == gs.player) {
                 boolean pending = false;
                 for (GameEvent ev : gs.pendingEvents) if (ev.id.startsWith("peace:")) pending = true;
                 // at most one offer to the player every 20 days in total, and the same country never twice within 120 days
                 if (!pending && gs.day - gs.lastPeaceOfferDay >= 20 && gs.rng.nextDouble() < 0.3) {
                     gs.lastPeaceOfferDay = gs.day;
-                    gs.peaceCooldown[n][e] = gs.peaceCooldown[e][n] = gs.day + 120;
+                    gs.offerCooldown[n][e] = gs.day + 120;     // its own offers are throttled separately: you can always propose yourself
                     Events.post(gs, new GameEvent("peace:" + n, gs.player, gs.nationName(n) + " proposes peace",
                             gs.nationName(n) + " is tired of the war and offers a ceasefire on current lines.", List.of("Accept peace", "Refuse")));
                 }
-            } else if (e != n) { gs.peaceCooldown[n][e] = gs.peaceCooldown[e][n] = gs.day + 30; gs.offerPeace(n, e); }
+            } else if (e != n) gs.offerPeace(n, e);   // a refusal starts its own cooldown
         }
     }
 

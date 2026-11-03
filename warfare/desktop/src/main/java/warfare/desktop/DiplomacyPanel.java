@@ -67,7 +67,7 @@ final class DiplomacyPanel extends JPanel {
         grid.setAlignmentX(Component.LEFT_ALIGNMENT);
         int me = gs.player;
         action(grid, "War", "battle", n -> gs.declareWar(me, n), Wf.Kind.DANGER);
-        action(grid, "Peace", "general", n -> gs.offerPeace(me, n), Wf.Kind.NORMAL);
+        action(grid, "Peace", "general", n -> { PeaceCards.open(GameUi.current, n); return null; }, Wf.Kind.NORMAL);
         action(grid, "Alliance", "tab_diplo", n -> gs.formAlliance(me, n), Wf.Kind.PRIMARY);
         action(grid, "Break pact", "split", n -> gs.breakAlliance(me, n), Wf.Kind.NORMAL);
         action(grid, "Sanction", "wall", n -> gs.toggleSanction(me, n), Wf.Kind.NORMAL);
